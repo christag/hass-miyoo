@@ -273,10 +273,10 @@ jobs:
       run: |
         cd artifacts
         # Rename and organize files
-        mv HACompanion-miyoo-arm/HACompanion-miyoo.zip HACompanion-miyoo-${{ github.ref_name }}.zip
-        mv hacompanion-linux-x86_64/hacompanion hacompanion-linux-x86_64
-        mv hacompanion-macos/hacompanion hacompanion-macos
-        chmod +x hacompanion-linux-x86_64 hacompanion-macos
+        mv HACompanion-miyoo-arm/HACompanion-miyoo.zip ./HACompanion-miyoo-${{ github.ref_name }}.zip
+        mv hacompanion-linux-x86_64/hacompanion ./hacompanion-linux-x86_64-binary
+        mv hacompanion-macos/hacompanion ./hacompanion-macos-binary
+        chmod +x hacompanion-linux-x86_64-binary hacompanion-macos-binary
         ls -la
 
     - name: Create Release
@@ -288,7 +288,7 @@ jobs:
         generate_release_notes: true
         files: |
           artifacts/HACompanion-miyoo-${{ github.ref_name }}.zip
-          artifacts/hacompanion-linux-x86_64
-          artifacts/hacompanion-macos
+          artifacts/hacompanion-linux-x86_64-binary
+          artifacts/hacompanion-macos-binary
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
