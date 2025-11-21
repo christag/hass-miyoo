@@ -1,0 +1,50 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          build-essential \
+          cmake \
+          libsdl2-dev \
+          libsdl2-image-dev \
+          libsdl2-ttf-dev \
+          libcurl4-openssl-dev \
+          libsqlite3-dev \
+          libcjson-dev \
+          zip
+
+    - name: Build
+      run: |
+        cmake -B build -DCMAKE_BUILD_TYPE=Release
+        cmake --build build --config Release
+
+    - name: Create release package
+      run: |
+        mkdir -p release/HACompanion
+        cp build/hacompanion release/HACompanion/
+        cp servers.example.json release/HACompanion/
+        cp README.md release/HACompanion/
+        cp LICENSE release/HACompanion/
+        cp -r assets release/HACompanion/
+        cd release && zip -r ../HACompanion-${{ github.ref_name }}-linux-x86_64.zip HACompanion
+
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: HACompanion-${{ github.ref_name }}-linux-x86_64.zip
+        generate_release_notes: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
