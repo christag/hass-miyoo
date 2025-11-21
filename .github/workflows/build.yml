@@ -10,7 +10,7 @@ on:
 
 jobs:
   build-miyoo-arm:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-20.04
 
     steps:
     - uses: actions/checkout@v4
@@ -161,6 +161,7 @@ jobs:
         mkdir -p release/HACompanion
         cp build-arm/hacompanion release/HACompanion/
         cp -r assets release/HACompanion/
+        cp assets/icon.png release/HACompanion/icon.png
 
         # Create launch script
         cat > release/HACompanion/launch.sh << 'LAUNCH_EOF'
