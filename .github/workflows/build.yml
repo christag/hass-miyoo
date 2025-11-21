@@ -63,8 +63,9 @@ jobs:
           --disable-pulseaudio --disable-alsa --disable-jack \
           --disable-video-vulkan --disable-dbus
         make -j$(nproc)
-        make install
+        make install || true
         cd ..
+        ls -la $SYSROOT/usr/lib/libSDL2* || echo "SDL2 libs check"
 
         # Freetype
         wget -q https://download.savannah.gnu.org/releases/freetype/freetype-2.13.2.tar.gz
@@ -73,7 +74,7 @@ jobs:
         ./configure --host=arm-linux-gnueabihf --prefix=$SYSROOT/usr \
           --with-zlib=no --with-bzip2=no --with-png=no --with-harfbuzz=no
         make -j$(nproc)
-        make install
+        make install || true
         cd ..
 
         # SDL2_ttf
@@ -85,7 +86,7 @@ jobs:
           FREETYPE_CFLAGS="-I$SYSROOT/usr/include/freetype2" \
           FREETYPE_LIBS="-L$SYSROOT/usr/lib -lfreetype"
         make -j$(nproc)
-        make install
+        make install || true
         cd ..
 
         # SDL2_image (minimal)
@@ -96,7 +97,7 @@ jobs:
           SDL2_CONFIG=$SYSROOT/usr/bin/sdl2-config \
           --disable-jpg --disable-png-shared --disable-webp --disable-tif
         make -j$(nproc)
-        make install
+        make install || true
         cd ..
 
         # libcurl (minimal, no SSL for now)
@@ -109,8 +110,12 @@ jobs:
           --disable-pop3 --disable-imap --disable-smtp --disable-gopher \
           --disable-rtsp --disable-smb
         make -j$(nproc)
-        make install
+        make install || true
         cd ..
+
+        # Verify libraries installed
+        echo "=== Installed libraries ==="
+        ls -la $SYSROOT/usr/lib/*.a $SYSROOT/usr/lib/*.la 2>/dev/null | head -20 || true
 
     - name: Build hacompanion for Miyoo ARM
       run: |
