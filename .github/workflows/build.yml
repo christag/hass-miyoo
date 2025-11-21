@@ -41,7 +41,8 @@ jobs:
         arm-linux-gnueabihf-gcc -c cJSON.c -o cJSON.o -fPIC
         arm-linux-gnueabihf-ar rcs libcjson.a cJSON.o
         cp libcjson.a $SYSROOT/usr/lib/
-        cp cJSON.h $SYSROOT/usr/include/
+        mkdir -p $SYSROOT/usr/include/cjson
+        cp cJSON.h $SYSROOT/usr/include/cjson/
         cd ..
 
         # SQLite3
