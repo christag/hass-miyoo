@@ -300,6 +300,9 @@ jobs:
 
     - name: Create Release using gh CLI
       run: |
+        # Delete release if it already exists
+        gh release delete ${{ github.ref_name }} --yes || true
+
         gh release create ${{ github.ref_name }} \
           --title "HACompanion ${{ github.ref_name }}" \
           --generate-notes \
