@@ -10,119 +10,25 @@ on:
 jobs:
   build-miyoo-arm:
     runs-on: ubuntu-latest
+    container:
+      image: miyoocfw/toolchain-shared-uclibc:latest
 
     steps:
     - uses: actions/checkout@v4
 
-    - name: Install ARM cross-compiler
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y \
-          gcc-arm-linux-gnueabihf \
-          g++-arm-linux-gnueabihf \
-          cmake \
-          pkg-config \
-          autoconf \
-          automake \
-          libtool \
-          libfreetype-dev \
-          unzip \
-          wget
-
-    - name: Build ARM dependencies
-      run: |
-        mkdir -p sysroot/usr/lib sysroot/usr/include
-        export SYSROOT=$GITHUB_WORKSPACE/sysroot
-
-        # SDL2
-        wget -q https://github.com/libsdl-org/SDL/releases/download/release-2.28.5/SDL2-2.28.5.tar.gz
-        tar xzf SDL2-2.28.5.tar.gz
-        cd SDL2-2.28.5
-        ./configure --host=arm-linux-gnueabihf --prefix=$SYSROOT/usr \
-          --disable-video-wayland --disable-video-x11 --enable-video-kmsdrm \
-          --disable-pulseaudio --disable-alsa --disable-video-vulkan \
-          --disable-video-opengl --disable-video-opengles --disable-video-opengles2
-        make -j$(nproc)
-        make install
-        cd ..
-
-        # Freetype (needed by SDL2_ttf)
-        wget -q https://download.savannah.gnu.org/releases/freetype/freetype-2.13.2.tar.gz
-        tar xzf freetype-2.13.2.tar.gz
-        cd freetype-2.13.2
-        ./configure --host=arm-linux-gnueabihf --prefix=$SYSROOT/usr --with-zlib=no --with-bzip2=no --with-png=no
-        make -j$(nproc)
-        make install
-        cd ..
-
-        # SDL2_ttf
-        wget -q https://github.com/libsdl-org/SDL_ttf/releases/download/release-2.20.2/SDL2_ttf-2.20.2.tar.gz
-        tar xzf SDL2_ttf-2.20.2.tar.gz
-        cd SDL2_ttf-2.20.2
-        ./configure --host=arm-linux-gnueabihf --prefix=$SYSROOT/usr \
-          --with-sdl-prefix=$SYSROOT/usr \
-          FT2_CFLAGS="-I$SYSROOT/usr/include/freetype2" \
-          FT2_LIBS="-L$SYSROOT/usr/lib -lfreetype"
-        make -j$(nproc)
-        make install
-        cd ..
-
-        # SDL2_image (minimal, just PNG support)
-        wget -q https://github.com/libsdl-org/SDL_image/releases/download/release-2.6.3/SDL2_image-2.6.3.tar.gz
-        tar xzf SDL2_image-2.6.3.tar.gz
-        cd SDL2_image-2.6.3
-        ./configure --host=arm-linux-gnueabihf --prefix=$SYSROOT/usr \
-          --with-sdl-prefix=$SYSROOT/usr \
-          --disable-webp --disable-tif --disable-xcf --disable-jpg-shared --disable-png-shared
-        make -j$(nproc)
-        make install
-        cd ..
-
-        # cJSON (static)
-        wget -q https://github.com/DaveGamble/cJSON/archive/refs/tags/v1.7.16.tar.gz
-        tar xzf v1.7.16.tar.gz
-        cd cJSON-1.7.16
-        mkdir build && cd build
-        cmake -DCMAKE_C_COMPILER=arm-linux-gnueabihf-gcc \
-              -DCMAKE_INSTALL_PREFIX=$SYSROOT/usr \
-              -DENABLE_CJSON_TEST=OFF \
-              -DBUILD_SHARED_LIBS=OFF ..
-        make -j$(nproc)
-        make install
-        cd ../..
-
-        # SQLite3 (static)
-        wget -q https://www.sqlite.org/2024/sqlite-amalgamation-3450000.zip
-        unzip -q sqlite-amalgamation-3450000.zip
-        cd sqlite-amalgamation-3450000
-        arm-linux-gnueabihf-gcc -c sqlite3.c -o sqlite3.o -DSQLITE_OMIT_LOAD_EXTENSION
-        arm-linux-gnueabihf-ar rcs libsqlite3.a sqlite3.o
-        cp libsqlite3.a $SYSROOT/usr/lib/
-        cp sqlite3.h sqlite3ext.h $SYSROOT/usr/include/
-        cd ..
-
-        # libcurl (static, minimal)
-        wget -q https://curl.se/download/curl-8.5.0.tar.gz
-        tar xzf curl-8.5.0.tar.gz
-        cd curl-8.5.0
-        ./configure --host=arm-linux-gnueabihf --prefix=$SYSROOT/usr \
-          --disable-shared --enable-static \
-          --without-ssl --without-zlib --without-brotli \
-          --disable-ldap --disable-telnet --disable-dict \
-          --disable-file --disable-tftp --disable-rtsp \
-          --disable-pop3 --disable-imap --disable-smtp \
-          --disable-gopher --disable-smb
-        make -j$(nproc)
-        make install
-        cd ..
-
-    - name: Build hacompanion for ARM
+    - name: Build hacompanion for Miyoo ARM
       run: |
         mkdir -p build-arm
         cd build-arm
-        cmake -DCMAKE_TOOLCHAIN_FILE=../cmake/arm-toolchain.cmake \
-              -DCMAKE_FIND_ROOT_PATH=$GITHUB_WORKSPACE/sysroot \
-              -DCMAKE_PREFIX_PATH=$GITHUB_WORKSPACE/sysroot/usr \
+        # Use the toolchain's cross compiler
+        export CC=/opt/miyoo/bin/arm-linux-gnueabihf-gcc
+        export CXX=/opt/miyoo/bin/arm-linux-gnueabihf-g++
+        export SYSROOT=/opt/miyoo/arm-linux-gnueabihf/libc
+
+        cmake -DCMAKE_C_COMPILER=$CC \
+              -DCMAKE_CXX_COMPILER=$CXX \
+              -DCMAKE_FIND_ROOT_PATH=$SYSROOT \
+              -DCMAKE_C_FLAGS="-march=armv7-a -mfpu=neon -mfloat-abi=hard" \
               -DCMAKE_BUILD_TYPE=Release \
               ..
         make -j$(nproc) VERBOSE=1
@@ -142,17 +48,17 @@ jobs:
         chmod +x release/HACompanion/launch.sh
 
         # Create config.json for OnionOS
-        cat > release/HACompanion/config.json << 'CONFIG_EOF'
+        cat > release/HACompanion/config.json << 'LAUNCH_EOF'
         {
           "label": "HA Companion",
           "icon": "icon.png",
           "launch": "launch.sh",
           "description": "Home Assistant Companion"
         }
-        CONFIG_EOF
+        LAUNCH_EOF
 
         # Create sample servers.json
-        cat > release/HACompanion/servers.json.example << 'SERVERS_EOF'
+        cat > release/HACompanion/servers.json.example << 'LAUNCH_EOF'
         {
           "servers": [
             {
@@ -165,7 +71,7 @@ jobs:
           ],
           "default_server": 0
         }
-        SERVERS_EOF
+        LAUNCH_EOF
 
         cd release
         zip -r HACompanion-miyoo.zip HACompanion/
