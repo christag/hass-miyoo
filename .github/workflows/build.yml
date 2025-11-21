@@ -16,18 +16,38 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
+    - name: Find toolchain
+      run: |
+        echo "Looking for ARM GCC..."
+        find /opt -name "*gcc" 2>/dev/null | head -20 || true
+        find /usr -name "arm-*-gcc" 2>/dev/null | head -10 || true
+        which arm-linux-gnueabihf-gcc || true
+        ls -la /opt/ || true
+        ls -la /opt/miyoo/ 2>/dev/null || true
+
     - name: Build hacompanion for Miyoo ARM
       run: |
         mkdir -p build-arm
         cd build-arm
-        # Use the toolchain's cross compiler
-        export CC=/opt/miyoo/bin/arm-linux-gnueabihf-gcc
-        export CXX=/opt/miyoo/bin/arm-linux-gnueabihf-g++
-        export SYSROOT=/opt/miyoo/arm-linux-gnueabihf/libc
+
+        # Find the cross compiler
+        if [ -f "/opt/miyoo/bin/arm-linux-gnueabihf-gcc" ]; then
+          export CC=/opt/miyoo/bin/arm-linux-gnueabihf-gcc
+          export CXX=/opt/miyoo/bin/arm-linux-gnueabihf-g++
+        elif command -v arm-linux-gnueabihf-gcc &> /dev/null; then
+          export CC=$(which arm-linux-gnueabihf-gcc)
+          export CXX=$(which arm-linux-gnueabihf-g++)
+        else
+          # Search for it
+          export CC=$(find /opt -name "arm-*-gcc" 2>/dev/null | head -1)
+          export CXX=$(find /opt -name "arm-*-g++" 2>/dev/null | head -1)
+        fi
+
+        echo "Using CC=$CC"
+        echo "Using CXX=$CXX"
 
         cmake -DCMAKE_C_COMPILER=$CC \
               -DCMAKE_CXX_COMPILER=$CXX \
-              -DCMAKE_FIND_ROOT_PATH=$SYSROOT \
               -DCMAKE_C_FLAGS="-march=armv7-a -mfpu=neon -mfloat-abi=hard" \
               -DCMAKE_BUILD_TYPE=Release \
               ..
