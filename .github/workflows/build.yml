@@ -123,6 +123,7 @@ jobs:
         cd curl-8.5.0
         ./configure --host=arm-linux-gnueabihf --prefix=$SYSROOT/usr \
           --disable-shared --enable-static --without-ssl --without-zlib \
+          --without-brotli --without-zstd --without-libpsl --without-nghttp2 \
           --disable-ldap --disable-dict --disable-telnet --disable-tftp \
           --disable-pop3 --disable-imap --disable-smtp --disable-gopher \
           --disable-rtsp --disable-smb
