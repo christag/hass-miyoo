@@ -28,12 +28,13 @@ jobs:
         # Verify installation
         arm-linux-gnueabihf-gcc --version
 
-    - name: Build dependencies from source
+    - name: Build cJSON and SQLite
       run: |
+        set -ex
         export SYSROOT=$GITHUB_WORKSPACE/sysroot
         mkdir -p $SYSROOT/usr/lib $SYSROOT/usr/include
 
-        # cJSON (header-only friendly, build static)
+        # cJSON
         wget -q https://github.com/DaveGamble/cJSON/archive/refs/tags/v1.7.16.tar.gz
         tar xzf v1.7.16.tar.gz
         cd cJSON-1.7.16
@@ -43,7 +44,7 @@ jobs:
         cp cJSON.h $SYSROOT/usr/include/
         cd ..
 
-        # SQLite3 (amalgamation)
+        # SQLite3
         wget -q https://www.sqlite.org/2024/sqlite-amalgamation-3450000.zip
         unzip -q sqlite-amalgamation-3450000.zip
         cd sqlite-amalgamation-3450000
@@ -51,30 +52,39 @@ jobs:
         arm-linux-gnueabihf-ar rcs libsqlite3.a sqlite3.o
         cp libsqlite3.a $SYSROOT/usr/lib/
         cp sqlite3.h sqlite3ext.h $SYSROOT/usr/include/
-        cd ..
 
-        # SDL2
+    - name: Build SDL2
+      run: |
+        set -ex
+        export SYSROOT=$GITHUB_WORKSPACE/sysroot
         wget -q https://github.com/libsdl-org/SDL/releases/download/release-2.28.5/SDL2-2.28.5.tar.gz
         tar xzf SDL2-2.28.5.tar.gz
         cd SDL2-2.28.5
         ./configure --host=arm-linux-gnueabihf --prefix=$SYSROOT/usr \
+          --disable-shared --enable-static \
           --enable-video-dummy --disable-video-opengl --disable-video-opengles \
           --disable-video-wayland --disable-video-x11 \
           --disable-pulseaudio --disable-alsa --disable-jack \
           --disable-video-vulkan --disable-dbus
         make -j$(nproc)
-        make install || true
-        cd ..
-        ls -la $SYSROOT/usr/lib/libSDL2* || echo "SDL2 libs check"
+        make install
+        ls -la $SYSROOT/usr/lib/libSDL2*
+        echo "SDL2 build complete"
+
+    - name: Build Freetype and SDL2_ttf
+      run: |
+        set -ex
+        export SYSROOT=$GITHUB_WORKSPACE/sysroot
 
         # Freetype
         wget -q https://download.savannah.gnu.org/releases/freetype/freetype-2.13.2.tar.gz
         tar xzf freetype-2.13.2.tar.gz
         cd freetype-2.13.2
         ./configure --host=arm-linux-gnueabihf --prefix=$SYSROOT/usr \
+          --disable-shared --enable-static \
           --with-zlib=no --with-bzip2=no --with-png=no --with-harfbuzz=no
         make -j$(nproc)
-        make install || true
+        make install
         cd ..
 
         # SDL2_ttf
@@ -82,25 +92,32 @@ jobs:
         tar xzf SDL2_ttf-2.20.2.tar.gz
         cd SDL2_ttf-2.20.2
         ./configure --host=arm-linux-gnueabihf --prefix=$SYSROOT/usr \
+          --disable-shared --enable-static \
           SDL2_CONFIG=$SYSROOT/usr/bin/sdl2-config \
           FREETYPE_CFLAGS="-I$SYSROOT/usr/include/freetype2" \
           FREETYPE_LIBS="-L$SYSROOT/usr/lib -lfreetype"
         make -j$(nproc)
-        make install || true
-        cd ..
+        make install
+        echo "Freetype and SDL2_ttf complete"
 
-        # SDL2_image (minimal)
+    - name: Build SDL2_image and libcurl
+      run: |
+        set -ex
+        export SYSROOT=$GITHUB_WORKSPACE/sysroot
+
+        # SDL2_image
         wget -q https://github.com/libsdl-org/SDL_image/releases/download/release-2.6.3/SDL2_image-2.6.3.tar.gz
         tar xzf SDL2_image-2.6.3.tar.gz
         cd SDL2_image-2.6.3
         ./configure --host=arm-linux-gnueabihf --prefix=$SYSROOT/usr \
+          --disable-shared --enable-static \
           SDL2_CONFIG=$SYSROOT/usr/bin/sdl2-config \
           --disable-jpg --disable-png-shared --disable-webp --disable-tif
         make -j$(nproc)
-        make install || true
+        make install
         cd ..
 
-        # libcurl (minimal, no SSL for now)
+        # libcurl
         wget -q https://curl.se/download/curl-8.5.0.tar.gz
         tar xzf curl-8.5.0.tar.gz
         cd curl-8.5.0
@@ -110,12 +127,12 @@ jobs:
           --disable-pop3 --disable-imap --disable-smtp --disable-gopher \
           --disable-rtsp --disable-smb
         make -j$(nproc)
-        make install || true
-        cd ..
+        make install
 
-        # Verify libraries installed
+        # Verify
         echo "=== Installed libraries ==="
-        ls -la $SYSROOT/usr/lib/*.a $SYSROOT/usr/lib/*.la 2>/dev/null | head -20 || true
+        ls -la $SYSROOT/usr/lib/*.a 2>/dev/null || true
+        echo "SDL2_image and libcurl complete"
 
     - name: Build hacompanion for Miyoo ARM
       run: |
