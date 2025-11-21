@@ -82,8 +82,7 @@ Create/edit `servers.json`:
       "name": "Home",
       "url": "http://homeassistant.local",
       "port": 8123,
-      "token": "your_long_lived_access_token_here",
-      "username": "admin"
+      "token": "your_long_lived_access_token_here"
     }
   ],
   "default_server": 0
@@ -95,7 +94,6 @@ Create/edit `servers.json`:
 - `url`: Home Assistant URL (local IP or domain)
 - `port`: Home Assistant port (usually 8123)
 - `token`: Long-lived access token
-- `username`: Your Home Assistant username
 - `default_server`: Index of default server (0 = first)
 
 ---
