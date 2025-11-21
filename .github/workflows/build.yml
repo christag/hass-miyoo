@@ -166,9 +166,23 @@ jobs:
         cat > release/HACompanion/launch.sh << 'LAUNCH_EOF'
         #!/bin/sh
         cd /mnt/SDCARD/App/HACompanion
-        HOME=/mnt/SDCARD/App/HACompanion ./hacompanion
+        HOME=/mnt/SDCARD/App/HACompanion ./hacompanion 2>&1 | tee debug.log
         LAUNCH_EOF
         chmod +x release/HACompanion/launch.sh
+
+        # Create debug launch script (run via SSH/telnet)
+        cat > release/HACompanion/launch_debug.sh << 'LAUNCH_EOF'
+        #!/bin/sh
+        cd /mnt/SDCARD/App/HACompanion
+        echo "=== HACompanion Debug Launch ===" | tee debug.log
+        echo "Date: $(date)" | tee -a debug.log
+        echo "Checking dependencies..." | tee -a debug.log
+        ldd ./hacompanion 2>&1 | tee -a debug.log
+        echo "Starting app..." | tee -a debug.log
+        HOME=/mnt/SDCARD/App/HACompanion ./hacompanion 2>&1 | tee -a debug.log
+        echo "Exit code: $?" | tee -a debug.log
+        LAUNCH_EOF
+        chmod +x release/HACompanion/launch_debug.sh
 
         # Create config.json for OnionOS
         cat > release/HACompanion/config.json << 'LAUNCH_EOF'
