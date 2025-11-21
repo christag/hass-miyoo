@@ -9,46 +9,129 @@ on:
 
 jobs:
   build-miyoo-arm:
-    runs-on: ubuntu-latest
-    container:
-      image: miyoocfw/toolchain-shared-uclibc:latest
+    runs-on: ubuntu-22.04
 
     steps:
     - uses: actions/checkout@v4
 
-    - name: Find toolchain
+    - name: Install ARM cross-compiler and dependencies
       run: |
-        echo "Looking for ARM GCC..."
-        find /opt -name "*gcc" 2>/dev/null | head -20 || true
-        find /usr -name "arm-*-gcc" 2>/dev/null | head -10 || true
-        which arm-linux-gnueabihf-gcc || true
-        ls -la /opt/ || true
-        ls -la /opt/miyoo/ 2>/dev/null || true
+        sudo apt-get update
+        sudo apt-get install -y \
+          gcc-arm-linux-gnueabihf \
+          g++-arm-linux-gnueabihf \
+          cmake \
+          pkg-config \
+          libsdl2-dev:armhf \
+          libsdl2-ttf-dev:armhf \
+          libsdl2-image-dev:armhf \
+          libcurl4-openssl-dev:armhf \
+          libsqlite3-dev:armhf \
+          libcjson-dev:armhf || true
+
+        # If armhf packages fail, we'll build statically
+        sudo dpkg --add-architecture armhf || true
+        sudo apt-get update || true
+
+    - name: Build dependencies from source
+      run: |
+        export SYSROOT=$GITHUB_WORKSPACE/sysroot
+        mkdir -p $SYSROOT/usr/lib $SYSROOT/usr/include
+
+        # cJSON (header-only friendly, build static)
+        wget -q https://github.com/DaveGamble/cJSON/archive/refs/tags/v1.7.16.tar.gz
+        tar xzf v1.7.16.tar.gz
+        cd cJSON-1.7.16
+        arm-linux-gnueabihf-gcc -c cJSON.c -o cJSON.o -fPIC
+        arm-linux-gnueabihf-ar rcs libcjson.a cJSON.o
+        cp libcjson.a $SYSROOT/usr/lib/
+        cp cJSON.h $SYSROOT/usr/include/
+        cd ..
+
+        # SQLite3 (amalgamation)
+        wget -q https://www.sqlite.org/2024/sqlite-amalgamation-3450000.zip
+        unzip -q sqlite-amalgamation-3450000.zip
+        cd sqlite-amalgamation-3450000
+        arm-linux-gnueabihf-gcc -c sqlite3.c -o sqlite3.o -DSQLITE_OMIT_LOAD_EXTENSION -fPIC
+        arm-linux-gnueabihf-ar rcs libsqlite3.a sqlite3.o
+        cp libsqlite3.a $SYSROOT/usr/lib/
+        cp sqlite3.h sqlite3ext.h $SYSROOT/usr/include/
+        cd ..
+
+        # SDL2
+        wget -q https://github.com/libsdl-org/SDL/releases/download/release-2.28.5/SDL2-2.28.5.tar.gz
+        tar xzf SDL2-2.28.5.tar.gz
+        cd SDL2-2.28.5
+        ./configure --host=arm-linux-gnueabihf --prefix=$SYSROOT/usr \
+          --enable-video-dummy --disable-video-opengl --disable-video-opengles \
+          --disable-video-wayland --disable-video-x11 \
+          --disable-pulseaudio --disable-alsa --disable-jack \
+          --disable-video-vulkan --disable-dbus
+        make -j$(nproc)
+        make install
+        cd ..
+
+        # Freetype
+        wget -q https://download.savannah.gnu.org/releases/freetype/freetype-2.13.2.tar.gz
+        tar xzf freetype-2.13.2.tar.gz
+        cd freetype-2.13.2
+        ./configure --host=arm-linux-gnueabihf --prefix=$SYSROOT/usr \
+          --with-zlib=no --with-bzip2=no --with-png=no --with-harfbuzz=no
+        make -j$(nproc)
+        make install
+        cd ..
+
+        # SDL2_ttf
+        wget -q https://github.com/libsdl-org/SDL_ttf/releases/download/release-2.20.2/SDL2_ttf-2.20.2.tar.gz
+        tar xzf SDL2_ttf-2.20.2.tar.gz
+        cd SDL2_ttf-2.20.2
+        ./configure --host=arm-linux-gnueabihf --prefix=$SYSROOT/usr \
+          SDL2_CONFIG=$SYSROOT/usr/bin/sdl2-config \
+          FREETYPE_CFLAGS="-I$SYSROOT/usr/include/freetype2" \
+          FREETYPE_LIBS="-L$SYSROOT/usr/lib -lfreetype"
+        make -j$(nproc)
+        make install
+        cd ..
+
+        # SDL2_image (minimal)
+        wget -q https://github.com/libsdl-org/SDL_image/releases/download/release-2.6.3/SDL2_image-2.6.3.tar.gz
+        tar xzf SDL2_image-2.6.3.tar.gz
+        cd SDL2_image-2.6.3
+        ./configure --host=arm-linux-gnueabihf --prefix=$SYSROOT/usr \
+          SDL2_CONFIG=$SYSROOT/usr/bin/sdl2-config \
+          --disable-jpg --disable-png-shared --disable-webp --disable-tif
+        make -j$(nproc)
+        make install
+        cd ..
+
+        # libcurl (minimal, no SSL for now)
+        wget -q https://curl.se/download/curl-8.5.0.tar.gz
+        tar xzf curl-8.5.0.tar.gz
+        cd curl-8.5.0
+        ./configure --host=arm-linux-gnueabihf --prefix=$SYSROOT/usr \
+          --disable-shared --enable-static --without-ssl --without-zlib \
+          --disable-ldap --disable-dict --disable-telnet --disable-tftp \
+          --disable-pop3 --disable-imap --disable-smtp --disable-gopher \
+          --disable-rtsp --disable-smb
+        make -j$(nproc)
+        make install
+        cd ..
 
     - name: Build hacompanion for Miyoo ARM
       run: |
         mkdir -p build-arm
         cd build-arm
 
-        # Find the cross compiler
-        if [ -f "/opt/miyoo/bin/arm-linux-gnueabihf-gcc" ]; then
-          export CC=/opt/miyoo/bin/arm-linux-gnueabihf-gcc
-          export CXX=/opt/miyoo/bin/arm-linux-gnueabihf-g++
-        elif command -v arm-linux-gnueabihf-gcc &> /dev/null; then
-          export CC=$(which arm-linux-gnueabihf-gcc)
-          export CXX=$(which arm-linux-gnueabihf-g++)
-        else
-          # Search for it
-          export CC=$(find /opt -name "arm-*-gcc" 2>/dev/null | head -1)
-          export CXX=$(find /opt -name "arm-*-g++" 2>/dev/null | head -1)
-        fi
+        export SYSROOT=$GITHUB_WORKSPACE/sysroot
+        export PKG_CONFIG_PATH=$SYSROOT/usr/lib/pkgconfig
+        export PKG_CONFIG_LIBDIR=$SYSROOT/usr/lib/pkgconfig
 
-        echo "Using CC=$CC"
-        echo "Using CXX=$CXX"
-
-        cmake -DCMAKE_C_COMPILER=$CC \
-              -DCMAKE_CXX_COMPILER=$CXX \
-              -DCMAKE_C_FLAGS="-march=armv7-a -mfpu=neon -mfloat-abi=hard" \
+        cmake -DCMAKE_C_COMPILER=arm-linux-gnueabihf-gcc \
+              -DCMAKE_CXX_COMPILER=arm-linux-gnueabihf-g++ \
+              -DCMAKE_FIND_ROOT_PATH=$SYSROOT \
+              -DCMAKE_PREFIX_PATH=$SYSROOT/usr \
+              -DCMAKE_C_FLAGS="-march=armv7-a -mfpu=neon -mfloat-abi=hard -I$SYSROOT/usr/include" \
+              -DCMAKE_EXE_LINKER_FLAGS="-L$SYSROOT/usr/lib" \
               -DCMAKE_BUILD_TYPE=Release \
               ..
         make -j$(nproc) VERBOSE=1
