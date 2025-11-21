@@ -3,6 +3,7 @@ name: Build
 on:
   push:
     branches: [ main, master ]
+    tags: [ 'v*' ]
   pull_request:
     branches: [ main, master ]
   workflow_dispatch:
@@ -256,3 +257,38 @@ jobs:
       with:
         name: hacompanion-macos
         path: build/hacompanion
+
+  release:
+    needs: [build-miyoo-arm, build-linux, build-macos]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: artifacts
+
+    - name: Prepare release assets
+      run: |
+        cd artifacts
+        # Rename and organize files
+        mv HACompanion-miyoo-arm/HACompanion-miyoo.zip HACompanion-miyoo-${{ github.ref_name }}.zip
+        mv hacompanion-linux-x86_64/hacompanion hacompanion-linux-x86_64
+        mv hacompanion-macos/hacompanion hacompanion-macos
+        chmod +x hacompanion-linux-x86_64 hacompanion-macos
+        ls -la
+
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        name: HACompanion ${{ github.ref_name }}
+        draft: false
+        prerelease: false
+        generate_release_notes: true
+        files: |
+          artifacts/HACompanion-miyoo-${{ github.ref_name }}.zip
+          artifacts/hacompanion-linux-x86_64
+          artifacts/hacompanion-macos
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
