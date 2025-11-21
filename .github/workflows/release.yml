@@ -8,6 +8,8 @@ on:
 jobs:
   build-and-release:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     steps:
     - uses: actions/checkout@v4
@@ -41,10 +43,11 @@ jobs:
         cp -r assets release/HACompanion/
         cd release && zip -r ../HACompanion-${{ github.ref_name }}-linux-x86_64.zip HACompanion
 
-    - name: Create GitHub Release
-      uses: softprops/action-gh-release@v1
-      with:
-        files: HACompanion-${{ github.ref_name }}-linux-x86_64.zip
-        generate_release_notes: true
+    - name: Create GitHub Release using gh CLI
+      run: |
+        gh release create ${{ github.ref_name }} \
+          --title "HACompanion ${{ github.ref_name }}" \
+          --generate-notes \
+          HACompanion-${{ github.ref_name }}-linux-x86_64.zip
       env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        GH_TOKEN: ${{ github.token }}
