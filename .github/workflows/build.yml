@@ -14,7 +14,7 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-    - name: Install ARM cross-compiler and dependencies
+    - name: Install ARM cross-compiler
       run: |
         sudo apt-get update
         sudo apt-get install -y \
@@ -22,16 +22,11 @@ jobs:
           g++-arm-linux-gnueabihf \
           cmake \
           pkg-config \
-          libsdl2-dev:armhf \
-          libsdl2-ttf-dev:armhf \
-          libsdl2-image-dev:armhf \
-          libcurl4-openssl-dev:armhf \
-          libsqlite3-dev:armhf \
-          libcjson-dev:armhf || true
+          unzip \
+          wget
 
-        # If armhf packages fail, we'll build statically
-        sudo dpkg --add-architecture armhf || true
-        sudo apt-get update || true
+        # Verify installation
+        arm-linux-gnueabihf-gcc --version
 
     - name: Build dependencies from source
       run: |
