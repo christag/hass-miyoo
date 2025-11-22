@@ -52,6 +52,8 @@ target_link_libraries(hacompanion
     ${SDL2_IMAGE_LIBRARIES}
     ${SDL2_TTF_LIBRARIES}
     curl
+    ssl
+    crypto
     cjson
     sqlite3
     m
