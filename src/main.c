@@ -88,9 +88,6 @@ typedef struct {
  * Initialize SDL2 and create window/renderer
  */
 static int init_sdl(app_state_t *app) {
-    // CRITICAL: Set Miyoo-specific environment variable for double buffering
-    SDL_setenv("SDL_MMIYOO_DOUBLE_BUFFER", "1", 1);
-
     // Initialize SDL
     if (SDL_Init(SDL_INIT_VIDEO) < 0) {
         fprintf(stderr, "SDL_Init failed: %s\n", SDL_GetError());
