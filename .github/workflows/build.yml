@@ -64,10 +64,10 @@ jobs:
         cd SDL2-2.28.5
         ./configure --host=arm-linux-gnueabihf --prefix=$SYSROOT/usr \
           --disable-shared --enable-static \
-          --enable-video-dummy --disable-video-opengl --disable-video-opengles \
+          --enable-video --disable-video-opengl --disable-video-opengles \
           --disable-video-wayland --disable-video-x11 \
           --disable-pulseaudio --disable-alsa --disable-jack \
-          --disable-video-vulkan --disable-dbus
+          --disable-video-vulkan --disable-dbus --disable-video-kmsdrm
         make -j$(nproc)
         make install
         ls -la $SYSROOT/usr/lib/libSDL2*
@@ -183,8 +183,6 @@ jobs:
         cat > release/HACompanion/launch.sh << 'LAUNCH_EOF'
         #!/bin/sh
         cd /mnt/SDCARD/App/HACompanion
-        export SDL_VIDEODRIVER=kmsdrm
-        export SDL_FBDEV=/dev/fb0
         export HOME=/mnt/SDCARD/App/HACompanion
         ./hacompanion 2>&1 | tee debug.log
         LAUNCH_EOF
@@ -199,8 +197,6 @@ jobs:
         echo "Checking dependencies..." | tee -a debug.log
         ldd ./hacompanion 2>&1 | tee -a debug.log
         echo "Starting app..." | tee -a debug.log
-        export SDL_VIDEODRIVER=kmsdrm
-        export SDL_FBDEV=/dev/fb0
         export HOME=/mnt/SDCARD/App/HACompanion
         ./hacompanion 2>&1 | tee -a debug.log
         echo "Exit code: $?" | tee -a debug.log
