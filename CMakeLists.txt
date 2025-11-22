@@ -54,6 +54,7 @@ target_link_libraries(hacompanion
     curl
     ssl
     crypto
+    dl
     cjson
     sqlite3
     m
