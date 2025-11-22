@@ -10,7 +10,7 @@ on:
 
 jobs:
   build-miyoo-arm:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04  # Use older Ubuntu with GLIBC 2.31 (closer to Miyoo's 2.28)
 
     steps:
     - uses: actions/checkout@v4
@@ -164,14 +164,14 @@ jobs:
         export PKG_CONFIG_PATH=$SYSROOT/usr/lib/pkgconfig
         export PKG_CONFIG_LIBDIR=$SYSROOT/usr/lib/pkgconfig
 
-        # We need to link SDL2 dynamically but everything else statically
-        # This is tricky - we'll link statically by default, then specifically link SDL2 dynamically
+        # Build with dynamic linking on Ubuntu 20.04 (GLIBC 2.31, closer to Miyoo's 2.28)
+        # The bundled Miyoo SDL2 library will be loaded via LD_LIBRARY_PATH
         cmake -DCMAKE_C_COMPILER=arm-linux-gnueabihf-gcc \
               -DCMAKE_CXX_COMPILER=arm-linux-gnueabihf-g++ \
               -DCMAKE_FIND_ROOT_PATH=$SYSROOT \
               -DCMAKE_PREFIX_PATH=$SYSROOT/usr \
               -DCMAKE_C_FLAGS="-march=armv7-a -mfpu=neon -mfloat-abi=hard -I$SYSROOT/usr/include" \
-              -DCMAKE_EXE_LINKER_FLAGS="-L$SYSROOT/usr/lib -Wl,-Bstatic -lfreetype -lSDL2_ttf -lSDL2_image -lcjson -lsqlite3 -lcurl -lssl -lcrypto -Wl,-Bdynamic -lSDL2 -Wl,-rpath,/mnt/SDCARD/App/HACompanion/lib -static-libgcc -static-libstdc++" \
+              -DCMAKE_EXE_LINKER_FLAGS="-L$SYSROOT/usr/lib -Wl,-rpath,/mnt/SDCARD/App/HACompanion/lib" \
               -DCMAKE_BUILD_TYPE=Release \
               ..
         make -j$(nproc) VERBOSE=1
