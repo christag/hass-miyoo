@@ -62,12 +62,14 @@ jobs:
         wget -q https://github.com/libsdl-org/SDL/releases/download/release-2.28.5/SDL2-2.28.5.tar.gz
         tar xzf SDL2-2.28.5.tar.gz
         cd SDL2-2.28.5
+        # Install minimal SDL2 headers for compilation
+        # We'll use the Miyoo's system SDL2 library at runtime
         ./configure --host=arm-linux-gnueabihf --prefix=$SYSROOT/usr \
-          --disable-shared --enable-static \
+          --enable-shared --enable-static \
           --enable-video --disable-video-opengl --disable-video-opengles \
           --disable-video-wayland --disable-video-x11 \
           --disable-pulseaudio --disable-alsa --disable-jack \
-          --disable-video-vulkan --disable-dbus --disable-video-kmsdrm
+          --disable-video-vulkan --disable-dbus
         make -j$(nproc)
         make install
         ls -la $SYSROOT/usr/lib/libSDL2*
@@ -174,16 +176,23 @@ jobs:
 
     - name: Create Miyoo package
       run: |
-        mkdir -p release/HACompanion
+        mkdir -p release/HACompanion/lib
         cp build-arm/hacompanion release/HACompanion/
         cp -r assets release/HACompanion/
         cp assets/icon.png release/HACompanion/icon.png
+
+        # Bundle Miyoo's SDL2 library with MMIYOO video driver support
+        if [ -f libs/miyoo/libSDL2-2.0.so.0 ]; then
+          cp libs/miyoo/libSDL2-2.0.so.0 release/HACompanion/lib/
+          echo "Bundled Miyoo SDL2 library with MMIYOO video driver"
+        fi
 
         # Create launch script
         cat > release/HACompanion/launch.sh << 'LAUNCH_EOF'
         #!/bin/sh
         cd /mnt/SDCARD/App/HACompanion
         export HOME=/mnt/SDCARD/App/HACompanion
+        export LD_LIBRARY_PATH=/mnt/SDCARD/App/HACompanion/lib:$LD_LIBRARY_PATH
         ./hacompanion 2>&1 | tee debug.log
         LAUNCH_EOF
         chmod +x release/HACompanion/launch.sh
@@ -194,7 +203,9 @@ jobs:
         cd /mnt/SDCARD/App/HACompanion
         echo "=== HACompanion Debug Launch ===" | tee debug.log
         echo "Date: $(date)" | tee -a debug.log
+        echo "LD_LIBRARY_PATH: /mnt/SDCARD/App/HACompanion/lib" | tee -a debug.log
         echo "Checking dependencies..." | tee -a debug.log
+        export LD_LIBRARY_PATH=/mnt/SDCARD/App/HACompanion/lib:$LD_LIBRARY_PATH
         ldd ./hacompanion 2>&1 | tee -a debug.log
         echo "Starting app..." | tee -a debug.log
         export HOME=/mnt/SDCARD/App/HACompanion
