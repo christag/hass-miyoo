@@ -444,6 +444,10 @@ int main(int argc, char *argv[]) {
     (void)argc;
     (void)argv;
 
+    // Disable stdout buffering so we can see output immediately in debug.log
+    setbuf(stdout, NULL);
+    setbuf(stderr, NULL);
+
     printf("Home Assistant Companion for Miyoo Mini Plus\n");
     printf("Phase 4: UI Design System\n");
     printf("-------------------------------------------\n");
