@@ -290,6 +290,51 @@ jobs:
         name: hacompanion-macos
         path: build/hacompanion
 
+  # Update v0.1.0 release with latest main branch builds
+  update-dev-release:
+    needs: [build-miyoo-arm, build-linux, build-macos]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: write
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: artifacts
+
+    - name: Prepare release assets
+      run: |
+        cd artifacts
+        # Rename and organize files
+        mv HACompanion-miyoo-arm/HACompanion-miyoo.zip ./HACompanion-miyoo.zip
+        mv hacompanion-linux-x86_64/hacompanion ./hacompanion-linux-x86_64-binary
+        mv hacompanion-macos/hacompanion ./hacompanion-macos-binary
+        chmod +x hacompanion-linux-x86_64-binary hacompanion-macos-binary
+        ls -la
+
+    - name: Update v0.1.0 release
+      run: |
+        # Delete old assets
+        gh release delete-asset v0.1.0 HACompanion-miyoo.zip --yes || true
+        gh release delete-asset v0.1.0 hacompanion-linux-x86_64-binary --yes || true
+        gh release delete-asset v0.1.0 hacompanion-macos-binary --yes || true
+
+        # Upload new assets
+        gh release upload v0.1.0 \
+          artifacts/HACompanion-miyoo.zip \
+          artifacts/hacompanion-linux-x86_64-binary \
+          artifacts/hacompanion-macos-binary \
+          --clobber
+
+        echo "Updated v0.1.0 release with latest main branch builds"
+      env:
+        GH_TOKEN: ${{ github.token }}
+
+  # Create versioned releases from tags
   release:
     needs: [build-miyoo-arm, build-linux, build-macos]
     runs-on: ubuntu-latest

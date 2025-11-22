@@ -168,20 +168,55 @@ Before implementation, comprehensive research was conducted:
 - **[Color Palette](design/color-palette.md)**: Final color scheme (Game Boy green or SNES purple themes)
 - **[Icon Specifications](design/icon-specifications.md)**: 16x16px pixel art icon library
 
-## Building from Source
+## Development Workflow
 
-### Setup Cross-Compilation Toolchain
+### IMPORTANT: Testing on Miyoo Mini Plus
+
+**DO NOT deploy directly to the Miyoo via SSH/SCP.** Always test by downloading from GitHub releases:
+
+1. Make code changes locally
+2. Commit and push to `main` branch
+3. Tag a new release: `git tag v0.X.X && git push --tags`
+4. GitHub Actions automatically builds and creates/updates the release
+5. Download the release ZIP from GitHub on your computer
+6. Transfer to Miyoo SD card manually or via file manager
+7. Test on actual hardware
+
+This ensures:
+- Release artifacts match what users download
+- Proper ARM cross-compilation via CI/CD
+- Consistent build environment
+- Proper version tracking
+
+### Building from Source
+
+#### GitHub Actions (Recommended for Miyoo ARM builds)
+
+All commits to `main` trigger builds, but releases are only created on version tags:
+
+```bash
+# Create a new release
+git tag v0.X.X
+git push --tags
+
+# GitHub Actions will:
+# 1. Build for Miyoo ARM, Linux x86_64, and macOS
+# 2. Create/update the release with all artifacts
+# 3. Attach HACompanion-miyoo-v0.X.X.zip for Miyoo users
+```
+
+#### Local Cross-Compilation (Advanced)
 
 ```bash
 # Install ARM toolchain
 sudo apt-get install gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf
 
 # Clone repository
-git clone https://github.com/yourusername/hass-miyoo.git
+git clone https://github.com/christag/hass-miyoo.git
 cd hass-miyoo
 
-# Build dependencies (SDL2, libcurl, cJSON, SQLite3 for ARM)
-./scripts/build-deps.sh
+# Build dependencies (handled by GitHub Actions workflow)
+# See .github/workflows/build.yml for dependency build steps
 
 # Build the app
 mkdir build && cd build
