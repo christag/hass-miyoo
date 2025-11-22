@@ -13,6 +13,9 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: ubuntu:20.04  # Ubuntu 20.04 has GLIBC 2.31 (closer to Miyoo's 2.28 than ubuntu-latest's 2.38+)
+      env:
+        DEBIAN_FRONTEND: noninteractive
+        TZ: Etc/UTC
 
     steps:
     - uses: actions/checkout@v4
