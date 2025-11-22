@@ -150,6 +150,20 @@ static int init_sdl(app_state_t *app) {
     // Disable texture filtering for pixel-perfect rendering
     SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "0");
 
+    // Debug: Print SDL driver information
+    SDL_RendererInfo renderer_info;
+    if (SDL_GetRendererInfo(app->renderer, &renderer_info) == 0) {
+        printf("SDL Renderer: %s\n", renderer_info.name);
+        printf("  Flags: %u\n", renderer_info.flags);
+        printf("  Texture formats: %u\n", renderer_info.num_texture_formats);
+        printf("  Max texture: %dx%d\n", renderer_info.max_texture_width, renderer_info.max_texture_height);
+    }
+
+    const char *video_driver = SDL_GetCurrentVideoDriver();
+    if (video_driver) {
+        printf("SDL Video Driver: %s\n", video_driver);
+    }
+
     printf("SDL2 initialized successfully\n");
     printf("Screen: %dx%d\n", SCREEN_WIDTH, SCREEN_HEIGHT);
 
