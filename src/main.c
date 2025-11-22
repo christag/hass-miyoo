@@ -88,6 +88,9 @@ typedef struct {
  * Initialize SDL2 and create window/renderer
  */
 static int init_sdl(app_state_t *app) {
+    // CRITICAL: Set Miyoo-specific environment variable for double buffering
+    SDL_setenv("SDL_MMIYOO_DOUBLE_BUFFER", "1", 1);
+
     // Initialize SDL
     if (SDL_Init(SDL_INIT_VIDEO) < 0) {
         fprintf(stderr, "SDL_Init failed: %s\n", SDL_GetError());
@@ -128,11 +131,11 @@ static int init_sdl(app_state_t *app) {
         return 0;
     }
 
-    // Create renderer with software rendering (compatible with Miyoo framebuffer)
+    // Create renderer with hardware acceleration and vsync (required for Miyoo)
     app->renderer = SDL_CreateRenderer(
         app->window,
         -1,
-        SDL_RENDERER_SOFTWARE
+        SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC
     );
 
     if (!app->renderer) {
@@ -167,6 +170,11 @@ static void handle_events(app_state_t *app) {
 
             case SDL_KEYDOWN:
             case SDL_KEYUP:
+                // Debug: Print key events
+                if (event.type == SDL_KEYDOWN) {
+                    printf("Key pressed: %d\n", event.key.keysym.sym);
+                }
+
                 input_update(&event);
 
                 // Handle exit dialog first (blocks other input)
@@ -298,6 +306,14 @@ static void render_exit_dialog(app_state_t *app) {
  * Render the current frame
  */
 static void render(app_state_t *app) {
+    static int frame_count = 0;
+
+    // Debug: Print which screen we're rendering (first 10 frames only)
+    if (frame_count < 10) {
+        printf("Frame %d: Rendering screen %d\n", frame_count, app->current_screen);
+        frame_count++;
+    }
+
     // Clear screen to Game Boy darkest green
     set_render_color(app->renderer, COLOR_BACKGROUND);
     SDL_RenderClear(app->renderer);
