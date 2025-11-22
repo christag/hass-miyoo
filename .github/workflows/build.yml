@@ -12,7 +12,7 @@ jobs:
   build-miyoo-arm:
     runs-on: ubuntu-latest
     container:
-      image: ubuntu:18.04  # Ubuntu 18.04 has GLIBC 2.27 (close to Miyoo's 2.28)
+      image: ubuntu:20.04  # Ubuntu 20.04 has GLIBC 2.31 (closer to Miyoo's 2.28 than ubuntu-latest's 2.38+)
 
     steps:
     - uses: actions/checkout@v4
@@ -166,7 +166,7 @@ jobs:
         export PKG_CONFIG_PATH=$SYSROOT/usr/lib/pkgconfig
         export PKG_CONFIG_LIBDIR=$SYSROOT/usr/lib/pkgconfig
 
-        # Build with dynamic linking in Ubuntu 18.04 container (GLIBC 2.27, close to Miyoo's 2.28)
+        # Build with dynamic linking in Ubuntu 20.04 container (GLIBC 2.31, closer to Miyoo's 2.28)
         # The bundled Miyoo SDL2 library will be loaded via LD_LIBRARY_PATH
         cmake -DCMAKE_C_COMPILER=arm-linux-gnueabihf-gcc \
               -DCMAKE_CXX_COMPILER=arm-linux-gnueabihf-g++ \
