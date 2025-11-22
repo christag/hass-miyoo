@@ -131,11 +131,11 @@ static int init_sdl(app_state_t *app) {
         return 0;
     }
 
-    // Create renderer with hardware acceleration and vsync (required for Miyoo)
+    // Create renderer (use default flags to let SDL choose best available driver)
     app->renderer = SDL_CreateRenderer(
         app->window,
         -1,
-        SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC
+        0  // Let SDL choose the best available renderer
     );
 
     if (!app->renderer) {
