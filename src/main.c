@@ -619,8 +619,8 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    // Start on setup screen
-    app.current_screen = SCREEN_SETUP;
+    // Start on list screen (skip setup since we already connected during init)
+    app.current_screen = SCREEN_LIST;
 
     printf("\nReady! Press Menu/Escape to exit\n");
     printf("Setup: D-Pad=Select, A=Connect, START=Continue\n");
