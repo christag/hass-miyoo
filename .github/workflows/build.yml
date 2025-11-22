@@ -201,6 +201,7 @@ jobs:
         cd /mnt/SDCARD/App/HACompanion
         export HOME=/mnt/SDCARD/App/HACompanion
         export LD_LIBRARY_PATH=/mnt/SDCARD/App/HACompanion/lib:$LD_LIBRARY_PATH
+        export SDL_VIDEODRIVER=mmiyoo
         ./hacompanion 2>&1 | tee debug.log
         LAUNCH_EOF
         chmod +x release/HACompanion/launch.sh
@@ -212,11 +213,13 @@ jobs:
         echo "=== HACompanion Debug Launch ===" | tee debug.log
         echo "Date: $(date)" | tee -a debug.log
         echo "LD_LIBRARY_PATH: /mnt/SDCARD/App/HACompanion/lib" | tee -a debug.log
+        echo "SDL_VIDEODRIVER: mmiyoo" | tee -a debug.log
         echo "Checking dependencies..." | tee -a debug.log
         export LD_LIBRARY_PATH=/mnt/SDCARD/App/HACompanion/lib:$LD_LIBRARY_PATH
         ldd ./hacompanion 2>&1 | tee -a debug.log
         echo "Starting app..." | tee -a debug.log
         export HOME=/mnt/SDCARD/App/HACompanion
+        export SDL_VIDEODRIVER=mmiyoo
         ./hacompanion 2>&1 | tee -a debug.log
         echo "Exit code: $?" | tee -a debug.log
         LAUNCH_EOF
