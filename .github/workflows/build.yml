@@ -102,7 +102,7 @@ jobs:
         make install
         echo "Freetype and SDL2_ttf complete"
 
-    - name: Build SDL2_image and libcurl
+    - name: Build SDL2_image, OpenSSL, and libcurl
       run: |
         set -ex
         export SYSROOT=$GITHUB_WORKSPACE/sysroot
@@ -119,23 +119,39 @@ jobs:
         make install
         cd ..
 
-        # libcurl
+        # OpenSSL (for HTTPS support in libcurl)
+        wget -q https://www.openssl.org/source/openssl-1.1.1w.tar.gz
+        tar xzf openssl-1.1.1w.tar.gz
+        cd openssl-1.1.1w
+        ./Configure linux-armv4 --prefix=$SYSROOT/usr \
+          --openssldir=$SYSROOT/usr/ssl \
+          no-shared no-tests \
+          --cross-compile-prefix=arm-linux-gnueabihf-
+        make -j$(nproc)
+        make install_sw
+        cd ..
+
+        # libcurl with OpenSSL
         wget -q https://curl.se/download/curl-8.5.0.tar.gz
         tar xzf curl-8.5.0.tar.gz
         cd curl-8.5.0
         ./configure --host=arm-linux-gnueabihf --prefix=$SYSROOT/usr \
-          --disable-shared --enable-static --without-ssl --without-zlib \
-          --without-brotli --without-zstd --without-libpsl --without-nghttp2 \
+          --disable-shared --enable-static \
+          --with-openssl=$SYSROOT/usr \
+          --without-zlib --without-brotli --without-zstd \
+          --without-libpsl --without-nghttp2 \
           --disable-ldap --disable-dict --disable-telnet --disable-tftp \
           --disable-pop3 --disable-imap --disable-smtp --disable-gopher \
-          --disable-rtsp --disable-smb
+          --disable-rtsp --disable-smb \
+          LDFLAGS="-L$SYSROOT/usr/lib" \
+          CPPFLAGS="-I$SYSROOT/usr/include"
         make -j$(nproc)
         make install
 
         # Verify
         echo "=== Installed libraries ==="
         ls -la $SYSROOT/usr/lib/*.a 2>/dev/null || true
-        echo "SDL2_image and libcurl complete"
+        echo "SDL2_image, OpenSSL, and libcurl complete"
 
     - name: Build hacompanion for Miyoo ARM
       run: |
