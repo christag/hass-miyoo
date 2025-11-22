@@ -19,6 +19,7 @@ typedef struct {
     int port;             // Port number (usually 8123)
     char token[512];      // Long-lived access token
     char username[64];    // Home Assistant username
+    int insecure;         // Skip SSL certificate verification (1 = skip, 0 = verify)
 } server_config_t;
 
 /**

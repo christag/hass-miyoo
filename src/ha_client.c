@@ -54,6 +54,7 @@ ha_client_t* ha_client_create(const char *url, int port, const char *token) {
     snprintf(client->base_url, sizeof(client->base_url), "%s:%d", url, port);
     strncpy(client->token, token, sizeof(client->token) - 1);
     client->timeout = DEFAULT_TIMEOUT;
+    client->insecure = 0;  // Default: verify SSL certificates
 
     // Initialize curl globally (should be done once per application)
     static int curl_initialized = 0;
@@ -112,6 +113,12 @@ static ha_response_t* ha_get(ha_client_t *client, const char *endpoint) {
     curl_easy_setopt(curl, CURLOPT_USERAGENT, USER_AGENT);
     curl_easy_setopt(curl, CURLOPT_TIMEOUT, (long)client->timeout);
     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+
+    // SSL certificate verification (skip if insecure flag is set)
+    if (client->insecure) {
+        curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
+        curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
+    }
 
     // Perform request
     CURLcode res = curl_easy_perform(curl);
@@ -184,6 +191,12 @@ static ha_response_t* ha_post(ha_client_t *client, const char *endpoint, const c
     curl_easy_setopt(curl, CURLOPT_USERAGENT, USER_AGENT);
     curl_easy_setopt(curl, CURLOPT_TIMEOUT, (long)client->timeout);
     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+
+    // SSL certificate verification (skip if insecure flag is set)
+    if (client->insecure) {
+        curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
+        curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
+    }
 
     // Perform request
     CURLcode res = curl_easy_perform(curl);

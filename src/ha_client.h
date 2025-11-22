@@ -19,6 +19,7 @@ typedef struct {
     char base_url[256];      // Full URL: http://homeassistant.local:8123
     char token[512];         // Long-lived access token
     int timeout;             // Request timeout in seconds (default: 30)
+    int insecure;            // Skip SSL certificate verification (1 = skip, 0 = verify)
 } ha_client_t;
 
 /**

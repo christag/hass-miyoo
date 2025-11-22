@@ -122,6 +122,9 @@ app_config_t* config_load(const char *filepath) {
         const char *username = json_get_string(server_json, "username", "");
         strncpy(server->username, username, sizeof(server->username) - 1);
 
+        // Get insecure flag (default: 0 = verify certificates)
+        server->insecure = json_get_int(server_json, "insecure", 0);
+
         parsed++;
     }
 

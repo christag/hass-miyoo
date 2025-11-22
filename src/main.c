@@ -488,6 +488,13 @@ int main(int argc, char *argv[]) {
         if (server) {
             printf("Connecting to: %s (%s:%d)\n", server->name, server->url, server->port);
             app.ha_client = ha_client_create(server->url, server->port, server->token);
+            if (app.ha_client) {
+                // Set SSL verification mode from config
+                app.ha_client->insecure = server->insecure;
+                if (server->insecure) {
+                    printf("Warning: SSL certificate verification disabled\n");
+                }
+            }
         }
     }
 
