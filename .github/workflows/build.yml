@@ -169,7 +169,7 @@ jobs:
               -DCMAKE_FIND_ROOT_PATH=$SYSROOT \
               -DCMAKE_PREFIX_PATH=$SYSROOT/usr \
               -DCMAKE_C_FLAGS="-march=armv7-a -mfpu=neon -mfloat-abi=hard -I$SYSROOT/usr/include" \
-              -DCMAKE_EXE_LINKER_FLAGS="-L$SYSROOT/usr/lib -static" \
+              -DCMAKE_EXE_LINKER_FLAGS="-L$SYSROOT/usr/lib -Wl,-rpath,/mnt/SDCARD/App/HACompanion/lib" \
               -DCMAKE_BUILD_TYPE=Release \
               ..
         make -j$(nproc) VERBOSE=1
