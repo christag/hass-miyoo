@@ -128,11 +128,11 @@ static int init_sdl(app_state_t *app) {
         return 0;
     }
 
-    // Create renderer with VSync
+    // Create renderer with software rendering (compatible with Miyoo framebuffer)
     app->renderer = SDL_CreateRenderer(
         app->window,
         -1,
-        SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC
+        SDL_RENDERER_SOFTWARE
     );
 
     if (!app->renderer) {
