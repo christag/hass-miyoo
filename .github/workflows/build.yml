@@ -198,12 +198,18 @@ jobs:
         # Create launch script
         cat > release/HACompanion/launch.sh << 'LAUNCH_EOF'
         #!/bin/sh
+        # Kill the OnionOS menu to take over the screen (CRITICAL for display output!)
+        /mnt/SDCARD/.tmp_update/bin/pressMenu2Kill hacompanion &
+
         cd /mnt/SDCARD/App/HACompanion
         export HOME=/mnt/SDCARD/App/HACompanion
         export LD_LIBRARY_PATH=/mnt/SDCARD/App/HACompanion/lib:$LD_LIBRARY_PATH
         export SDL_VIDEODRIVER=mmiyoo
         export SDL_MMIYOO_DOUBLE_BUFFER=1
         ./hacompanion 2>&1 | tee debug.log
+
+        # Kill pressMenu2Kill when done
+        pkill -9 pressMenu2Kill
         LAUNCH_EOF
         chmod +x release/HACompanion/launch.sh
 
