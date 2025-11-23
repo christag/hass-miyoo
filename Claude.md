@@ -207,6 +207,39 @@ git push --tags
 
 #### Local Cross-Compilation (Advanced)
 
+**Option 1: Using OnionUI Official Toolchain (Recommended for Local Development)**
+
+The OnionUI project provides an official Docker-based toolchain with pre-built Miyoo SDK:
+
+```bash
+# Clone OnionUI toolchain
+git clone https://github.com/OnionUI/dev-miyoomini-toolchain.git
+cd dev-miyoomini-toolchain
+
+# Build the toolchain Docker image (one-time setup)
+docker build -t mmiyoo-toolchain .
+
+# Use the toolchain to build our app
+cd /path/to/hass-miyoo
+docker run --rm -v $(pwd):/root/workspace mmiyoo-toolchain /bin/bash -c "
+  cd /root/workspace &&
+  mkdir -p build-miyoo &&
+  cd build-miyoo &&
+  cmake .. &&
+  make
+"
+
+# Output: build-miyoo/hacompanion (ARM binary ready for Miyoo)
+```
+
+**Benefits:**
+- Pre-configured Miyoo SDK with all libraries
+- Consistent build environment
+- Same toolchain used by OnionUI developers
+- No manual dependency compilation
+
+**Option 2: Manual Cross-Compilation (What GitHub Actions Uses)**
+
 ```bash
 # Install ARM toolchain
 sudo apt-get install gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf
@@ -215,8 +248,8 @@ sudo apt-get install gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf
 git clone https://github.com/christag/hass-miyoo.git
 cd hass-miyoo
 
-# Build dependencies (handled by GitHub Actions workflow)
-# See .github/workflows/build.yml for dependency build steps
+# Build dependencies (complex - see .github/workflows/build.yml for full steps)
+# Requires building: cJSON, SQLite, SDL2, Freetype, SDL2_ttf, SDL2_image, OpenSSL, libcurl
 
 # Build the app
 mkdir build && cd build
@@ -225,6 +258,8 @@ make
 
 # Output: build/hacompanion (ARM binary)
 ```
+
+**Note:** Manual cross-compilation is complex due to dependency building. The GitHub Actions workflow or OnionUI toolchain are recommended.
 
 ### Desktop Development Build (for testing)
 
