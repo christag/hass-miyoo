@@ -88,6 +88,10 @@ typedef struct {
  * Initialize SDL2 and create window/renderer
  */
 static int init_sdl(app_state_t *app) {
+    // CRITICAL: Set Miyoo double buffer flag BEFORE SDL_Init()
+    // This MUST be done in C code, not shell script, for proper SDL initialization
+    SDL_setenv("SDL_MMIYOO_DOUBLE_BUFFER", "1", 1);
+
     // Initialize SDL
     if (SDL_Init(SDL_INIT_VIDEO) < 0) {
         fprintf(stderr, "SDL_Init failed: %s\n", SDL_GetError());
