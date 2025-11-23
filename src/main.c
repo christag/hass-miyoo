@@ -128,11 +128,11 @@ static int init_sdl(app_state_t *app) {
         return 0;
     }
 
-    // Create renderer with software rendering for Miyoo's MMIYOO driver
+    // Create renderer (use default flags to let SDL choose best available driver)
     app->renderer = SDL_CreateRenderer(
         app->window,
         -1,
-        SDL_RENDERER_SOFTWARE  // Miyoo MMIYOO driver requires software rendering
+        0  // Let SDL choose the best available renderer
     );
 
     if (!app->renderer) {
