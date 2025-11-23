@@ -117,7 +117,7 @@ static int init_sdl(app_state_t *app) {
         SDL_WINDOWPOS_UNDEFINED,
         SCREEN_WIDTH,
         SCREEN_HEIGHT,
-        SDL_WINDOW_SHOWN
+        SDL_WINDOW_SHOWN | SDL_WINDOW_FULLSCREEN
     );
 
     if (!app->window) {
