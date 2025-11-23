@@ -261,6 +261,112 @@ Test environment values:
 
 **Note:** The `.env` file is gitignored and contains real credentials for testing.
 
+## Miyoo Mini Plus SDL2 Configuration (CRITICAL)
+
+### Correct SDL2 Initialization Sequence
+
+**CRITICAL: `SDL_MMIYOO_DOUBLE_BUFFER` MUST be set in C code BEFORE `SDL_Init()`**
+
+```c
+// CORRECT - This is the pattern ALL working Miyoo SDL2 apps use
+static int init_sdl(app_state_t *app) {
+    // CRITICAL: Set double buffer flag BEFORE SDL_Init()
+    // Setting this in shell scripts does NOT work reliably!
+    SDL_setenv("SDL_MMIYOO_DOUBLE_BUFFER", "1", 1);
+
+    // Now initialize SDL
+    if (SDL_Init(SDL_INIT_VIDEO) < 0) {
+        // error handling
+    }
+
+    // Create window
+    app->window = SDL_CreateWindow(...);
+
+    // ALWAYS use ACCELERATED renderer for Miyoo
+    app->renderer = SDL_CreateRenderer(
+        app->window,
+        -1,
+        SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC
+    );
+}
+```
+
+**NEVER use:**
+- ❌ `SDL_RENDERER_SOFTWARE` - Will result in black screen
+- ❌ `flags = 0` (auto-select) - SDL chooses SOFTWARE, which doesn't work
+- ❌ Setting `SDL_MMIYOO_DOUBLE_BUFFER` only in shell scripts - Not reliable!
+
+### Required Environment Variables
+
+Set in launch scripts:
+
+```bash
+# launch.sh
+export SDL_VIDEODRIVER=mmiyoo              # Use Miyoo's custom video driver
+export LD_LIBRARY_PATH=/path/to/libs:$LD_LIBRARY_PATH  # Load bundled Miyoo SDL2 library
+
+# NOTE: SDL_MMIYOO_DOUBLE_BUFFER is set in C code via SDL_setenv() BEFORE SDL_Init()
+# Setting it here in the shell script is NOT sufficient!
+```
+
+### Research-Backed Configuration
+
+This configuration is based on analysis of 5 working Miyoo SDL2 projects:
+
+1. **steward-fu/sdl2** - `ACCELERATED | PRESENTVSYNC`
+2. **XK9274/miyoo_sdl2_benchmarks** - `ACCELERATED` + `SDL_MMIYOO_DOUBLE_BUFFER=1`
+3. **lanmarc77/tinamp** - `ACCELERATED`
+4. **shauninman/MinUI** - `ACCELERATED | PRESENTVSYNC`
+5. Multiple other Miyoo apps - All use ACCELERATED
+
+### Why ACCELERATED is Required
+
+The Miyoo's custom MMIYOO video driver is a hardware-accelerated backend that directly renders to the framebuffer. It does NOT work with SDL's software renderer. When you pass `flags=0`, SDL chooses the SOFTWARE renderer (flags=13 = SOFTWARE + PRESENTVSYNC + TARGETTEXTURE), which cannot communicate with the MMIYOO driver.
+
+### Debug Log Analysis
+
+**Symptoms of incorrect configuration:**
+- `SDL Renderer: software` with `Flags: 13` = SOFTWARE renderer fallback
+- Physical screen remains black despite app rendering frames
+- All other initialization appears successful (fonts, entities, screens created)
+
+**Correct configuration shows:**
+- `SDL Renderer: MMIYOO` (or accelerated renderer name)
+- `Flags: 10` (ACCELERATED=2 + PRESENTVSYNC=8)
+- Visual output on physical screen
+
+### Troubleshooting Black Screen Issues
+
+If you encounter a black screen on Miyoo hardware:
+
+1. **Check debug.log for renderer type**
+   - If it shows "software" renderer, the SDL_MMIYOO_DOUBLE_BUFFER flag wasn't set properly
+   - Solution: Ensure `SDL_setenv("SDL_MMIYOO_DOUBLE_BUFFER", "1", 1)` is called BEFORE `SDL_Init()`
+
+2. **Verify SDL renderer flags**
+   - Should be `SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC`
+   - Never use `SDL_RENDERER_SOFTWARE` or `flags=0`
+
+3. **Check environment variables in launch script**
+   - `SDL_VIDEODRIVER=mmiyoo` must be set
+   - `LD_LIBRARY_PATH` must include the bundled SDL2 library path
+
+4. **Common mistakes:**
+   - ❌ Only setting SDL_MMIYOO_DOUBLE_BUFFER in shell script (not in C code)
+   - ❌ Setting the flag AFTER SDL_Init() instead of BEFORE
+   - ❌ Using auto-detect renderer flags (flags=0) instead of explicitly setting ACCELERATED
+   - ❌ Forgetting to bundle the Miyoo SDL2 library (libSDL2-2.0.so.0)
+
+### Bundled SDL2 Library
+
+The Miyoo requires a custom SDL2 build with the MMIYOO video driver. We bundle this library from OnionOS:
+- **Location**: `libs/miyoo/libSDL2-2.0.so.0`
+- **Source**: `/mnt/SDCARD/.tmp_update/lib/parasyte/libSDL2-2.0.so.0` on Miyoo
+- **Size**: ~5.2MB
+- **Why**: Our statically-built SDL2 doesn't include the MMIYOO driver
+
+The launch scripts use `LD_LIBRARY_PATH` to load this bundled library at runtime.
+
 ## Contributing
 
 Contributions welcome! Please see:
