@@ -28,6 +28,7 @@
 #include "screens/screen_script.h"
 #include "screens/screen_scene.h"
 #include "utils/input.h"
+#include "audio.h"
 #include "utils/config.h"
 #include "ha_client.h"
 #include "database.h"
@@ -92,8 +93,8 @@ static int init_sdl(app_state_t *app) {
     // This MUST be done in C code, not shell script, for proper SDL initialization
     SDL_setenv("SDL_MMIYOO_DOUBLE_BUFFER", "1", 1);
 
-    // Initialize SDL
-    if (SDL_Init(SDL_INIT_VIDEO) < 0) {
+    // Initialize SDL (VIDEO + AUDIO)
+    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) < 0) {
         fprintf(stderr, "SDL_Init failed: %s\n", SDL_GetError());
         return 0;
     }
@@ -190,6 +191,8 @@ static void handle_events(app_state_t *app) {
                 // Debug: Print key events
                 if (event.type == SDL_KEYDOWN) {
                     printf("Key pressed: %d\n", event.key.keysym.sym);
+                    // Play button press beep for debugging (proves app is running)
+                    audio_play_button();
                 }
 
                 input_update(&event);
@@ -492,6 +495,16 @@ int main(int argc, char *argv[]) {
     if (!init_sdl(&app)) {
         fprintf(stderr, "Failed to initialize SDL2\n");
         return 1;
+    }
+
+    // Initialize audio system (for debugging - beeps tell us the app is running)
+    printf("Initializing audio...\n");
+    if (audio_init()) {
+        printf("Audio initialized\n");
+        // Play startup chime - if you hear this, the app is loaded!
+        audio_play_startup();
+    } else {
+        printf("Warning: Audio initialization failed (continuing without sound)\n");
     }
 
     // Initialize input system

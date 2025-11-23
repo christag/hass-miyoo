@@ -24,6 +24,7 @@ link_directories(${SDL2_TTF_LIBRARY_DIRS})
 # Source files
 set(SOURCES
     src/main.c
+    src/audio.c
     src/utils/input.c
     src/utils/json_helpers.c
     src/utils/config.c
