@@ -115,13 +115,14 @@ static int init_sdl(app_state_t *app) {
     }
 
     // Create window
+    // NOTE: Do NOT use SDL_WINDOW_FULLSCREEN on Miyoo - the MMIYOO driver handles this automatically
     app->window = SDL_CreateWindow(
         "HA Companion",
         SDL_WINDOWPOS_UNDEFINED,
         SDL_WINDOWPOS_UNDEFINED,
         SCREEN_WIDTH,
         SCREEN_HEIGHT,
-        SDL_WINDOW_SHOWN | SDL_WINDOW_FULLSCREEN
+        SDL_WINDOW_SHOWN
     );
 
     if (!app->window) {
