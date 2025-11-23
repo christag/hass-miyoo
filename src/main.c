@@ -128,11 +128,12 @@ static int init_sdl(app_state_t *app) {
         return 0;
     }
 
-    // Create renderer (use default flags to let SDL choose best available driver)
+    // Create renderer with ACCELERATED + PRESENTVSYNC for Miyoo MMIYOO driver
+    // All Miyoo SDL2 apps use ACCELERATED renderer (confirmed via research)
     app->renderer = SDL_CreateRenderer(
         app->window,
         -1,
-        0  // Let SDL choose the best available renderer
+        SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC
     );
 
     if (!app->renderer) {
