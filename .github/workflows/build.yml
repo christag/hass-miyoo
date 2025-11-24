@@ -30,7 +30,8 @@ jobs:
           pkg-config \
           unzip \
           zip \
-          wget
+          wget \
+          git
 
         # Verify installation
         arm-linux-gnueabihf-gcc --version
