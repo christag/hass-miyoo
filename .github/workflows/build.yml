@@ -92,7 +92,7 @@ jobs:
         tar xzf freetype-2.13.2.tar.gz
         cd freetype-2.13.2
         ./configure --host=arm-linux-gnueabihf --prefix=$SYSROOT/usr \
-          --disable-shared --enable-static \
+          --enable-shared --disable-static \
           --with-zlib=no --with-bzip2=no --with-png=no --with-harfbuzz=no
         make -j$(nproc)
         make install
@@ -103,7 +103,7 @@ jobs:
         tar xzf SDL2_ttf-2.20.2.tar.gz
         cd SDL2_ttf-2.20.2
         ./configure --host=arm-linux-gnueabihf --prefix=$SYSROOT/usr \
-          --disable-shared --enable-static \
+          --enable-shared --disable-static \
           SDL2_CONFIG=$SYSROOT/usr/bin/sdl2-config \
           FREETYPE_CFLAGS="-I$SYSROOT/usr/include/freetype2" \
           FREETYPE_LIBS="-L$SYSROOT/usr/lib -lfreetype"
@@ -121,7 +121,7 @@ jobs:
         tar xzf SDL2_image-2.6.3.tar.gz
         cd SDL2_image-2.6.3
         ./configure --host=arm-linux-gnueabihf --prefix=$SYSROOT/usr \
-          --disable-shared --enable-static \
+          --enable-shared --disable-static \
           SDL2_CONFIG=$SYSROOT/usr/bin/sdl2-config \
           --disable-jpg --disable-png-shared --disable-webp --disable-tif
         make -j$(nproc)
