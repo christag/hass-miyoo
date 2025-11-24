@@ -197,45 +197,57 @@ cat /dev/urandom > /dev/fb0  # Shows static on screen
   - SDL_RenderClear() and SDL_RenderPresent() executing without errors
   - All debug logs showing "correct" initialization
 
-## Current Status: ROOT CAUSE CONFIRMED
+## Current Status: ROOT CAUSE FOUND - FIX IN PROGRESS
 
-**Root Cause**: Despite SDL reporting the "MMIYOO" video driver and renderer, the bundled OnionOS SDL2 library is NOT being used at runtime. The app is likely using our statically-compiled vanilla SDL2 instead, which doesn't have a functional MMIYOO framebuffer backend.
+**Root Cause (CONFIRMED)**: Binary was statically linked with vanilla SDL2 baked directly into it (28MB size). The bundled OnionOS SDL2 library with working MMIYOO driver was completely ignored.
 
-**Critical Finding from Attempt 9**:
-- SDL claims to use "MMIYOO" driver and renderer
-- All SDL calls succeed without errors
-- But: ZERO visual output, even with simplest possible rendering
-- This means SDL is not actually writing to the Miyoo framebuffer
+**Why It Happened**:
+- GitHub Actions build script configured all SDL2 dependencies with `--disable-shared --enable-static`
+- This forced the linker to statically link all SDL2 code into the binary
+- The statically-linked SDL2 was vanilla upstream code with only a stub MMIYOO driver
+- Launch script's `LD_LIBRARY_PATH` did nothing because there were no dynamic dependencies
 
-**The Real Problem**:
-Our launch script sets `LD_LIBRARY_PATH` to load OnionOS's SDL2 library at runtime, but:
-1. The app may be statically linked against vanilla SDL2 at compile time
-2. Or: The LD_LIBRARY_PATH isn't working as expected
-3. Or: The bundled SDL2 library has compatibility issues with our binary
+**The Fix (Applied)**:
+- Changed all SDL2 dependencies to `--enable-shared --disable-static`
+- Binary will now dynamically link to external .so files
+- Bundled all required shared libraries in the release package
+- At runtime, working OnionOS SDL2 library will be loaded via LD_LIBRARY_PATH
 
-**Evidence**:
-- Attempt 9 proves it's NOT our rendering code (even `SDL_RenderClear()` doesn't work)
-- SDL reports "MMIYOO" but produces no output (fake/stub driver?)
-- Direct framebuffer access works (`cat /dev/urandom > /dev/fb0`)
-- App responds to input (Menu button works)
+**Expected Outcome**:
+- Binary size: 28MB → ~2-3MB
+- Dynamic linking to working MMIYOO driver
+- Visual output on Miyoo screen should work!
 
-### Attempt 10: Verify Which SDL2 Library is Being Used (NEXT)
+### Attempt 10: Verify Which SDL2 Library is Being Used (CONFIRMED STATIC LINKING!)
 - **Date**: 2025-11-24
-- **Description**: Check if our app is actually loading OnionOS's SDL2 library or using statically-linked vanilla SDL2
-- **Diagnostic Commands**:
-  ```bash
-  # On Miyoo device:
-  ldd /mnt/SDCARD/App/HACompanion/hacompanion
-  # Should show: libSDL2-2.0.so.0 => /mnt/SDCARD/App/HACompanion/libs/miyoo/libSDL2-2.0.so.0
+- **Description**: Checked binary size to determine if statically or dynamically linked
+- **Result**: Binary was **28 MB** - CONFIRMED statically linked!
+- **Conclusion**: The binary had SDL2 compiled directly into it, completely ignoring the bundled OnionOS SDL2 library
+- **Root Cause Found**: GitHub Actions build script was building ALL SDL2 libraries with `--disable-shared --enable-static`
+  - Freetype: `--disable-shared --enable-static`
+  - SDL2_ttf: `--disable-shared --enable-static`
+  - SDL2_image: `--disable-shared --enable-static`
+- **Impact**: This forced static linking, baking vanilla SDL2 (with non-functional MMIYOO stub driver) directly into the binary
 
-  # Check if library is actually loaded:
-  cat /proc/$(pidof hacompanion)/maps | grep SDL
-  ```
-- **Possible Outcomes**:
-  1. If `ldd` shows "not a dynamic executable" → App is statically linked, ignores LD_LIBRARY_PATH
-  2. If SDL2 library path is wrong → Fix LD_LIBRARY_PATH in launch script
-  3. If library loads but still black screen → Bundled SDL2 library is incompatible
-- **Status**: PENDING - Need to run diagnostics on device
+### Attempt 11: Switch to Dynamic Linking (FIX IN PROGRESS)
+- **Date**: 2025-11-24
+- **Commits**: e747531, 6b8b47c
+- **Description**: Changed all SDL2 dependencies to build as shared libraries instead of static
+- **Changes Made**:
+  1. **Freetype**: Changed to `--enable-shared --disable-static`
+  2. **SDL2_ttf**: Changed to `--enable-shared --disable-static`
+  3. **SDL2_image**: Changed to `--enable-shared --disable-static`
+  4. **Bundle libraries**: Added code to bundle all shared libraries in release package:
+     - `libSDL2_ttf-2.0.so.0`
+     - `libSDL2_image-2.0.so.0`
+     - `libfreetype.so.6`
+     - `libSDL2-2.0.so.0` (Miyoo's version with working MMIYOO driver)
+- **Expected Results**:
+  - Binary size should drop from 28MB to ~2-3MB
+  - Binary will dynamically link to bundled libraries via LD_LIBRARY_PATH
+  - OnionOS SDL2 library with working MMIYOO driver will be loaded at runtime
+  - App should actually display on Miyoo screen!
+- **Status**: BUILD IN PROGRESS - Waiting for GitHub Actions to complete
 
 ## Next Steps to Try
 
