@@ -163,39 +163,83 @@ cat /dev/urandom > /dev/fb0  # Shows static on screen
 - **Outcome**: TESTING - Simplifies debugging by isolating SDL issues from network issues
 - **Status**: Waiting for device testing
 
-### Attempt 9: Simple Color Cycling Test (CURRENT)
+### Attempt 9: Simple Color Cycling Test (FAILED)
 - **Date**: 2025-11-24
 - **Commit**: d7b55ec
 - **Description**: Minimal rendering test that bypasses ALL complex code (fonts, screens, UI) and just fills screen with solid colors cycling WHITE → RED → GREEN → BLUE every 60 frames
 - **Purpose**: Determine if problem is with SDL/Miyoo communication or our rendering code
-- **Expected Debug Output**:
+- **Actual Debug Output**:
   ```
+  SDL Renderer: MMIYOO
+    Flags: 10
+    Texture formats: 2
+    Max texture: 800x600
+  SDL Video Driver: mmiyoo
+  SDL2 initialized successfully
+  Screen: 640x480
   === SKIP_NETWORK_TEST MODE: Bypassing all network/database initialization ===
   Starting minimal rendering test loop...
   Should see: WHITE -> RED -> GREEN -> BLUE cycling every 60 frames
   Frame 0: Color 0 (R=255 G=255 B=255)
   Frame 60: Color 1 (R=255 G=0 B=0)
+  Frame 120: Color 2 (R=0 G=255 B=0)
+  Frame 180: Color 3 (R=0 G=255 B=0)
+  Frame 240: Color 0 (R=255 G=255 B=255)
+  Frame 300: Color 1 (R=255 G=0 B=0)
+  ... (continues cycling)
   ```
-- **If Colors Appear**: Problem is in our screen/UI rendering logic
-- **If Still Black**: Problem is with SDL/Miyoo framebuffer communication
-- **Status**: BUILD IN PROGRESS - Waiting for GitHub Actions
+- **Visual Result**: Screen remained BLACK - NO colors visible on physical Miyoo screen
+- **Outcome**: FAILED - Even the simplest possible SDL rendering (just `SDL_RenderClear()` + `SDL_RenderPresent()`) produces no visual output
+- **Conclusion**: This confirms the problem is NOT in our complex UI code. The issue is that SDL cannot communicate with the Miyoo framebuffer, despite:
+  - SDL reporting "MMIYOO" renderer
+  - SDL_Init() succeeding
+  - SDL_CreateRenderer() succeeding with ACCELERATED flags
+  - SDL_RenderClear() and SDL_RenderPresent() executing without errors
+  - All debug logs showing "correct" initialization
 
-## Current Status: BLOCKED
+## Current Status: ROOT CAUSE CONFIRMED
 
-**Root Cause**: Vanilla SDL2 lacks the MMIYOO video driver needed for Miyoo Mini Plus display output.
+**Root Cause**: Despite SDL reporting the "MMIYOO" video driver and renderer, the bundled OnionOS SDL2 library is NOT being used at runtime. The app is likely using our statically-compiled vanilla SDL2 instead, which doesn't have a functional MMIYOO framebuffer backend.
 
-**Current Build**: Uses vanilla SDL2 which compiles cleanly but cannot output to Miyoo screen.
+**Critical Finding from Attempt 9**:
+- SDL claims to use "MMIYOO" driver and renderer
+- All SDL calls succeed without errors
+- But: ZERO visual output, even with simplest possible rendering
+- This means SDL is not actually writing to the Miyoo framebuffer
+
+**The Real Problem**:
+Our launch script sets `LD_LIBRARY_PATH` to load OnionOS's SDL2 library at runtime, but:
+1. The app may be statically linked against vanilla SDL2 at compile time
+2. Or: The LD_LIBRARY_PATH isn't working as expected
+3. Or: The bundled SDL2 library has compatibility issues with our binary
 
 **Evidence**:
-- App initializes correctly (debug logs confirm)
-- Network calls succeed (Home Assistant API works)
-- SDL renderer creation succeeds with correct flags
-- But: No MMIYOO driver available in vanilla SDL2
-- Result: Black screen despite "correct" initialization
+- Attempt 9 proves it's NOT our rendering code (even `SDL_RenderClear()` doesn't work)
+- SDL reports "MMIYOO" but produces no output (fake/stub driver?)
+- Direct framebuffer access works (`cat /dev/urandom > /dev/fb0`)
+- App responds to input (Menu button works)
+
+### Attempt 10: Verify Which SDL2 Library is Being Used (NEXT)
+- **Date**: 2025-11-24
+- **Description**: Check if our app is actually loading OnionOS's SDL2 library or using statically-linked vanilla SDL2
+- **Diagnostic Commands**:
+  ```bash
+  # On Miyoo device:
+  ldd /mnt/SDCARD/App/HACompanion/hacompanion
+  # Should show: libSDL2-2.0.so.0 => /mnt/SDCARD/App/HACompanion/libs/miyoo/libSDL2-2.0.so.0
+
+  # Check if library is actually loaded:
+  cat /proc/$(pidof hacompanion)/maps | grep SDL
+  ```
+- **Possible Outcomes**:
+  1. If `ldd` shows "not a dynamic executable" → App is statically linked, ignores LD_LIBRARY_PATH
+  2. If SDL2 library path is wrong → Fix LD_LIBRARY_PATH in launch script
+  3. If library loads but still black screen → Bundled SDL2 library is incompatible
+- **Status**: PENDING - Need to run diagnostics on device
 
 ## Next Steps to Try
 
-### Option A: XK9274/sdl2_miyoo (vanilla branch) - RECOMMENDED
+### Option A: Force Dynamic Linking with OnionOS SDL2 - RECOMMENDED
 **Why**:
 - Same author as working Moonlight Miyoo app
 - Specifically designed for Miyoo with standard toolchains
