@@ -62,16 +62,15 @@ jobs:
         cp libsqlite3.a $SYSROOT/usr/lib/
         cp sqlite3.h sqlite3ext.h $SYSROOT/usr/include/
 
-    - name: Build SDL2 (steward-fu Miyoo port with MMIYOO driver)
+    - name: Build SDL2
       run: |
         set -ex
         export SYSROOT=$GITHUB_WORKSPACE/sysroot
-
-        # Clone steward-fu's SDL2 with MMIYOO video driver
-        git clone --depth 1 https://github.com/steward-fu/sdl2.git
-        cd sdl2
-
-        # Build SDL2 with MMIYOO driver for Miyoo Mini Plus
+        wget -q https://github.com/libsdl-org/SDL/releases/download/release-2.28.5/SDL2-2.28.5.tar.gz
+        tar xzf SDL2-2.28.5.tar.gz
+        cd SDL2-2.28.5
+        # Install minimal SDL2 headers for compilation
+        # We'll use the Miyoo's system SDL2 library at runtime
         ./configure --host=arm-linux-gnueabihf --prefix=$SYSROOT/usr \
           --enable-shared --enable-static \
           --enable-video --disable-video-opengl --disable-video-opengles \
@@ -81,7 +80,7 @@ jobs:
         make -j$(nproc)
         make install
         ls -la $SYSROOT/usr/lib/libSDL2*
-        echo "SDL2 with MMIYOO driver build complete"
+        echo "SDL2 build complete"
 
     - name: Build Freetype and SDL2_ttf
       run: |
