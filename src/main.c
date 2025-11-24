@@ -9,6 +9,9 @@
  * Phase 3: Local database and cache management
  */
 
+// DEBUG: Set to 1 to skip all network/database and just render test screen
+#define SKIP_NETWORK_TEST 1
+
 #include <SDL.h>
 #include <SDL_image.h>
 #include <SDL_ttf.h>
@@ -510,6 +513,10 @@ int main(int argc, char *argv[]) {
     // Initialize input system
     input_init();
 
+#if SKIP_NETWORK_TEST
+    printf("=== SKIP_NETWORK_TEST MODE: Bypassing all network/database initialization ===\n");
+    // Skip all network and database init - go straight to minimal rendering test
+#else
     // Phase 3: Open database
     printf("Opening database...\n");
     app.db = database_open("hacompanion.db");
@@ -569,7 +576,64 @@ int main(int argc, char *argv[]) {
     }
 
     printf("Cached entities: %d\n", cache_manager_get_entity_count(app.cache_mgr));
+#endif
 
+#if SKIP_NETWORK_TEST
+    // Minimal rendering test - no fonts, icons, or screens needed
+    printf("Starting minimal rendering test loop...\n");
+    printf("Should see: WHITE -> RED -> GREEN -> BLUE cycling every 60 frames\n");
+
+    Uint32 frame_start;
+    int frame_time;
+    int frame_count = 0;
+    const SDL_Color colors[] = {
+        {255, 255, 255, 255},  // White
+        {255, 0, 0, 255},      // Red
+        {0, 255, 0, 255},      // Green
+        {0, 0, 255, 255}       // Blue
+    };
+
+    while (app.running) {
+        frame_start = SDL_GetTicks();
+
+        // Handle input (just quit on MENU/ESC)
+        SDL_Event event;
+        while (SDL_PollEvent(&event)) {
+            if (event.type == SDL_QUIT) {
+                app.running = 0;
+            } else if (event.type == SDL_KEYDOWN) {
+                if (event.key.keysym.sym == SDLK_ESCAPE) {
+                    app.running = 0;
+                }
+            }
+        }
+
+        // Cycle through colors every 60 frames
+        int color_index = (frame_count / 60) % 4;
+        SDL_Color color = colors[color_index];
+
+        // Fill screen with current color
+        SDL_SetRenderDrawColor(app.renderer, color.r, color.g, color.b, color.a);
+        SDL_RenderClear(app.renderer);
+        SDL_RenderPresent(app.renderer);
+
+        // Log every 60 frames
+        if (frame_count % 60 == 0) {
+            printf("Frame %d: Color %d (R=%d G=%d B=%d)\n", frame_count, color_index, color.r, color.g, color.b);
+        }
+
+        frame_count++;
+
+        // Frame rate limiting to 60 FPS
+        frame_time = SDL_GetTicks() - frame_start;
+        if (frame_time < 16) {
+            SDL_Delay(16 - frame_time);
+        }
+    }
+
+    printf("Test complete after %d frames\n", frame_count);
+
+#else
     // Phase 4: Initialize UI system
     printf("Loading fonts...\n");
     app.fonts = fonts_init("assets/fonts/PressStart2P.ttf");
@@ -675,6 +739,7 @@ int main(int argc, char *argv[]) {
 
     // Run main loop
     main_loop(&app);
+#endif
 
     // Cleanup and exit
     cleanup(&app);
