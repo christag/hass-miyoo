@@ -196,6 +196,13 @@ jobs:
           echo "Bundled Miyoo SDL2 library with MMIYOO video driver"
         fi
 
+        # Bundle all shared SDL2 libraries we built
+        export SYSROOT=$GITHUB_WORKSPACE/sysroot
+        cp $SYSROOT/usr/lib/libSDL2_ttf-2.0.so.0 release/HACompanion/lib/ || true
+        cp $SYSROOT/usr/lib/libSDL2_image-2.0.so.0 release/HACompanion/lib/ || true
+        cp $SYSROOT/usr/lib/libfreetype.so.6 release/HACompanion/lib/ || true
+        echo "Bundled SDL2_ttf, SDL2_image, and freetype shared libraries"
+
         # Create launch script
         cat > release/HACompanion/launch.sh << 'LAUNCH_EOF'
         #!/bin/sh
