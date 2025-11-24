@@ -100,6 +100,7 @@ hass-miyoo/
 ├── CMakeLists.txt              # Build configuration
 ├── servers.example.json        # Template server configuration
 ├── .gitignore                  # Git ignore rules
+├── issues/                     # Bug/issue tracking (one .md per issue)
 ├── src/                        # Source code
 │   ├── main.c
 │   ├── ha_client.c/h           # Home Assistant API client
@@ -170,23 +171,135 @@ Before implementation, comprehensive research was conducted:
 
 ## Development Workflow
 
-### IMPORTANT: Testing on Miyoo Mini Plus
+### Development Environment
 
-**DO NOT deploy directly to the Miyoo via SSH/SCP.** Always test by downloading from GitHub releases:
+**Mac Development**: This project is primarily developed on macOS. When using container commands, use `container` instead of `docker` (e.g., `podman` or Docker Desktop for Mac).
 
-1. Make code changes locally
-2. Commit and push to `main` branch
-3. Tag a new release: `git tag v0.X.X && git push --tags`
-4. GitHub Actions automatically builds and creates/updates the release
-5. Download the release ZIP from GitHub on your computer
-6. Transfer to Miyoo SD card manually or via file manager
-7. Test on actual hardware
+### CRITICAL: Testing & Deployment Workflow
 
-This ensures:
-- Release artifacts match what users download
-- Proper ARM cross-compilation via CI/CD
-- Consistent build environment
-- Proper version tracking
+**NEVER copy binaries directly to Miyoo via SSH/SCP - it will usually fail!**
+
+#### When User is On-Site with Miyoo
+
+When the Miyoo device is physically nearby:
+
+1. **SSH Access Available**: `sshpass -p onion ssh onion@192.168.101.235`
+   - Can read debug logs: `cat /mnt/SDCARD/App/HACompanion/debug.log`
+   - Can run diagnostic commands on-device
+   - **NEVER copy new binaries over SSH** - always use GitHub release workflow
+
+2. **Testing Workflow**:
+   - Push commits to GitHub
+   - Wait for GitHub Actions to complete build
+   - Download compiled binary from GitHub release
+   - Transfer manually to Miyoo SD card
+   - Test on device
+   - SSH in to read debug.log for diagnostics
+
+#### When User is Remote (Not On-Site)
+
+When the Miyoo device is not nearby:
+
+1. User downloads the compiled binary from GitHub releases
+2. User tests on physical device
+3. User reports back with test results and debug.log contents
+4. Debug issues based on reported logs
+
+### GitHub Actions Build & Release Workflow
+
+**IMPORTANT: Every commit updates the SAME release until validated as working**
+
+#### For Every Code Change:
+
+1. **Commit and Push**
+   ```bash
+   git add .
+   git commit -m "Description of changes"
+   git push origin main
+   ```
+
+2. **Monitor GitHub Actions**
+   - Check that all build jobs complete successfully
+   - If builds fail, fix immediately and push again
+   - Use sleep/polling to verify completion:
+   ```bash
+   # Get the latest run ID
+   run_id=$(gh run list --limit 1 --json databaseId --jq '.[0].databaseId')
+
+   # Poll until completion (check every 30s)
+   while true; do
+     status=$(gh run view $run_id --json status --jq '.status')
+     echo "Build status: $status"
+     if [ "$status" = "completed" ]; then
+       conclusion=$(gh run view $run_id --json conclusion --jq '.conclusion')
+       echo "Build $conclusion"
+       break
+     fi
+     sleep 30
+   done
+   ```
+
+3. **Verify Release Artifacts**
+   - Ensure Miyoo ARM build artifact is created
+   - **DO NOT build Linux/macOS builds** (not necessary for this project)
+   - Verify artifact is pushed to the release (not just created)
+   - Each commit should update the SAME release
+
+4. **Release Version Management**
+   - Keep re-using the SAME release (e.g., v0.5.0-testing) for all test iterations
+   - Only create a NEW release version when user validates it as working
+   - Format: `v0.X.X` for stable releases, `v0.X.X-testing` for development
+
+#### Creating a New Stable Release
+
+Only after user confirms a build is working:
+
+```bash
+git tag v0.X.X
+git push --tags
+```
+
+This creates a new stable release, then continue using `v0.X.X-testing` for the next development cycle.
+
+### Issue Tracking
+
+All bugs and issues must be documented in the `/issues/` folder:
+
+- Create a new markdown file for each issue: `issues/issue-description.md`
+- Document:
+  - Problem description
+  - Expected behavior
+  - Each attempted solution with outcome
+  - Final resolution (when fixed)
+- Update the issue file every time you try a new approach
+- **NEVER repeat the same failed solution** - always check the issue file first
+
+Example issue file structure:
+
+```markdown
+# Issue: Black Screen on Miyoo Device
+
+## Problem
+App launches but Miyoo screen remains black. Desktop build works fine.
+
+## Expected Behavior
+App should display on physical Miyoo screen.
+
+## Attempted Solutions
+
+### Attempt 1: SDL Renderer Flags (FAILED)
+- Changed to SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC
+- Outcome: Still black screen
+- Debug log: Shows "software" renderer being used
+
+### Attempt 2: Set SDL_MMIYOO_DOUBLE_BUFFER in C code (TESTING)
+- Added SDL_setenv("SDL_MMIYOO_DOUBLE_BUFFER", "1", 1) before SDL_Init()
+- Commit: abc123
+- Waiting for user to test...
+
+## Resolution
+TBD
+```
 
 ### Building from Source
 

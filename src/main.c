@@ -487,8 +487,8 @@ int main(int argc, char *argv[]) {
     setbuf(stdout, NULL);
     setbuf(stderr, NULL);
 
-    printf("Home Assistant Companion for Miyoo Mini Plus\n");
-    printf("Phase 4: UI Design System\n");
+    printf("Home Assistant Companion v1.0.0\n");
+    printf("Miyoo Mini Plus Edition\n");
     printf("-------------------------------------------\n");
 
     app_state_t app = {0};
