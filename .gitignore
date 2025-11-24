@@ -24,6 +24,9 @@ build/
 build-desktop/
 build-arm/
 cmake-build-*/
+toolchain/
+vendor/
+sysroot/
 
 # -----------------------------------------
 # Compiled binaries
