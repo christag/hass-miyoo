@@ -137,12 +137,16 @@ static int init_sdl(app_state_t *app) {
         return 0;
     }
 
-    // Create renderer with ACCELERATED + PRESENTVSYNC for Miyoo MMIYOO driver
-    // All Miyoo SDL2 apps use ACCELERATED renderer (confirmed via research)
+    // Create renderer with ACCELERATED ONLY for Miyoo MMIYOO driver
+    // CRITICAL: Do NOT use SDL_RENDERER_PRESENTVSYNC!
+    // Research shows that working Miyoo apps (XK9274/miyoo_sdl2_benchmarks render_suite)
+    // use ACCELERATED without PRESENTVSYNC. The PRESENTVSYNC flag causes the MMIYOO
+    // driver to fail to properly display content - buffers update but screen stays black.
+    // Frame rate limiting is done manually with SDL_Delay() instead.
     app->renderer = SDL_CreateRenderer(
         app->window,
         -1,
-        SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC
+        SDL_RENDERER_ACCELERATED
     );
 
     if (!app->renderer) {
