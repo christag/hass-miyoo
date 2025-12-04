@@ -24,7 +24,7 @@ jobs:
     - name: Install ARM cross-compiler
       run: |
         apt-get update
-        apt-get install -y gcc-arm-linux-gnueabihf wget zip
+        apt-get install -y gcc-arm-linux-gnueabihf make wget zip
 
     - name: Build minimal SDL2 headers
       run: |
