@@ -9,7 +9,7 @@
  * If you see BLACK: Problem is in compilation/linking
  */
 
-#include <SDL2/SDL.h>
+#include <SDL.h>
 #include <stdio.h>
 
 int main(int argc, char *argv[]) {
