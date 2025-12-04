@@ -205,47 +205,47 @@ jobs:
 
         # Create launch script (modeled after working Moonlight app)
         cat > release/HACompanion/launch.sh << 'LAUNCH_EOF'
-#!/bin/sh
-# Home Assistant Companion launcher for Miyoo Mini Plus / OnionOS
-# Based on working Moonlight app launch script
+        #!/bin/sh
+        # Home Assistant Companion launcher for Miyoo Mini Plus / OnionOS
+        # Based on working Moonlight app launch script
 
-cd /mnt/SDCARD/App/HACompanion
-export HOME=/mnt/SDCARD/App/HACompanion
+        cd /mnt/SDCARD/App/HACompanion
+        export HOME=/mnt/SDCARD/App/HACompanion
 
-# Set all video/audio drivers to mmiyoo (CRITICAL - Moonlight uses all three)
-export SDL_VIDEODRIVER=mmiyoo
-export SDL_AUDIODRIVER=mmiyoo
-export EGL_VIDEODRIVER=mmiyoo
+        # Set all video/audio drivers to mmiyoo (CRITICAL - Moonlight uses all three)
+        export SDL_VIDEODRIVER=mmiyoo
+        export SDL_AUDIODRIVER=mmiyoo
+        export EGL_VIDEODRIVER=mmiyoo
 
-# Full library path matching OnionOS conventions
-export LD_LIBRARY_PATH="./lib:/mnt/SDCARD/miyoo/lib:/mnt/SDCARD/.tmp_update/lib:/mnt/SDCARD/.tmp_update/lib/parasyte:$LD_LIBRARY_PATH"
+        # Full library path matching OnionOS conventions
+        export LD_LIBRARY_PATH="./lib:/mnt/SDCARD/miyoo/lib:/mnt/SDCARD/.tmp_update/lib:/mnt/SDCARD/.tmp_update/lib/parasyte:$LD_LIBRARY_PATH"
 
-# Run the application
-./hacompanion 2>&1 | tee debug.log
-LAUNCH_EOF
+        # Run the application
+        ./hacompanion 2>&1 | tee debug.log
+        LAUNCH_EOF
         chmod +x release/HACompanion/launch.sh
 
         # Create debug launch script (run via SSH/telnet)
         cat > release/HACompanion/launch_debug.sh << 'LAUNCH_EOF'
-#!/bin/sh
-cd /mnt/SDCARD/App/HACompanion
-echo "=== HACompanion Debug Launch ===" | tee debug.log
-echo "Date: $(date)" | tee -a debug.log
+        #!/bin/sh
+        cd /mnt/SDCARD/App/HACompanion
+        echo "=== HACompanion Debug Launch ===" | tee debug.log
+        echo "Date: $(date)" | tee -a debug.log
 
-export HOME=/mnt/SDCARD/App/HACompanion
-export SDL_VIDEODRIVER=mmiyoo
-export SDL_AUDIODRIVER=mmiyoo
-export EGL_VIDEODRIVER=mmiyoo
-export LD_LIBRARY_PATH="./lib:/mnt/SDCARD/miyoo/lib:/mnt/SDCARD/.tmp_update/lib:/mnt/SDCARD/.tmp_update/lib/parasyte:$LD_LIBRARY_PATH"
+        export HOME=/mnt/SDCARD/App/HACompanion
+        export SDL_VIDEODRIVER=mmiyoo
+        export SDL_AUDIODRIVER=mmiyoo
+        export EGL_VIDEODRIVER=mmiyoo
+        export LD_LIBRARY_PATH="./lib:/mnt/SDCARD/miyoo/lib:/mnt/SDCARD/.tmp_update/lib:/mnt/SDCARD/.tmp_update/lib/parasyte:$LD_LIBRARY_PATH"
 
-echo "LD_LIBRARY_PATH: $LD_LIBRARY_PATH" | tee -a debug.log
-echo "SDL_VIDEODRIVER: $SDL_VIDEODRIVER" | tee -a debug.log
-echo "SDL_AUDIODRIVER: $SDL_AUDIODRIVER" | tee -a debug.log
-echo "EGL_VIDEODRIVER: $EGL_VIDEODRIVER" | tee -a debug.log
-echo "Starting app..." | tee -a debug.log
-./hacompanion 2>&1 | tee -a debug.log
-echo "Exit code: $?" | tee -a debug.log
-LAUNCH_EOF
+        echo "LD_LIBRARY_PATH: $LD_LIBRARY_PATH" | tee -a debug.log
+        echo "SDL_VIDEODRIVER: $SDL_VIDEODRIVER" | tee -a debug.log
+        echo "SDL_AUDIODRIVER: $SDL_AUDIODRIVER" | tee -a debug.log
+        echo "EGL_VIDEODRIVER: $EGL_VIDEODRIVER" | tee -a debug.log
+        echo "Starting app..." | tee -a debug.log
+        ./hacompanion 2>&1 | tee -a debug.log
+        echo "Exit code: $?" | tee -a debug.log
+        LAUNCH_EOF
         chmod +x release/HACompanion/launch_debug.sh
 
         # Create config.json for OnionOS
