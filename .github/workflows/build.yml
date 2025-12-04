@@ -19,32 +19,51 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-    - name: Build test_display with Miyoo toolchain
+    - name: Build SDL2 with MMIYOO driver
       run: |
         set -ex
-
-        # Miyoo toolchain uses musl libc, not glibc!
-        # Compiler prefix: arm-buildroot-linux-musleabi-
         export PATH="/opt/miyoo/bin:$PATH"
         export SYSROOT=/opt/miyoo/arm-buildroot-linux-musleabi/sysroot
+        export DEPS=$GITHUB_WORKSPACE/deps
+        mkdir -p $DEPS/lib $DEPS/include
 
         # Show toolchain info
         echo "=== Toolchain Info ==="
         arm-buildroot-linux-musleabi-gcc --version
-        echo "Sysroot: $SYSROOT"
-        ls -la $SYSROOT/usr/include/SDL2/ 2>/dev/null || echo "SDL2 headers location may differ"
 
-        # Find SDL2 headers in toolchain
-        find /opt/miyoo -name "SDL.h" 2>/dev/null | head -5 || true
+        # Clone and build SDL2 with MMIYOO driver from steward-fu fork
+        git clone --depth 1 --branch mmiyoo https://github.com/steward-fu/SDL.git SDL2-mmiyoo
+        cd SDL2-mmiyoo
 
-        # Compile using toolchain's SDL2 (which has MMIYOO driver!)
+        ./configure --host=arm-buildroot-linux-musleabi --prefix=$DEPS \
+          --enable-shared --disable-static \
+          --enable-video --disable-video-opengl --disable-video-opengles \
+          --disable-video-wayland --disable-video-x11 \
+          --disable-pulseaudio --disable-alsa --disable-jack \
+          --disable-video-vulkan --disable-dbus \
+          CFLAGS="--sysroot=$SYSROOT" \
+          LDFLAGS="--sysroot=$SYSROOT"
+        make -j$(nproc)
+        make install
+
+        ls -la $DEPS/lib/libSDL2*
+        echo "SDL2 with MMIYOO driver built successfully"
+
+    - name: Build test_display with Miyoo toolchain
+      run: |
+        set -ex
+        export PATH="/opt/miyoo/bin:$PATH"
+        export SYSROOT=/opt/miyoo/arm-buildroot-linux-musleabi/sysroot
+        export DEPS=$GITHUB_WORKSPACE/deps
+
+        # Compile using our built SDL2 with MMIYOO driver
         arm-buildroot-linux-musleabi-gcc \
           -march=armv7-a -mtune=cortex-a7 -mfpu=neon-vfpv4 -mfloat-abi=hard \
           --sysroot=$SYSROOT \
-          -I$SYSROOT/usr/include/SDL2 \
+          -I$DEPS/include/SDL2 \
           -o test_display \
           src/test_display.c \
-          -L$SYSROOT/usr/lib \
+          -L$DEPS/lib \
           -Wl,-rpath,/mnt/SDCARD/App/test_display/lib \
           -lSDL2
 
@@ -55,15 +74,15 @@ jobs:
     - name: Create test package
       run: |
         set -ex
-        export SYSROOT=/opt/miyoo/arm-buildroot-linux-musleabi/sysroot
+        export DEPS=$GITHUB_WORKSPACE/deps
 
         mkdir -p release/test_display/lib
         cp test_display release/test_display/
         cp dist/test_display/launch.sh release/test_display/
         chmod +x release/test_display/launch.sh release/test_display/test_display
 
-        # Bundle the toolchain's SDL2 library (with MMIYOO driver)
-        cp $SYSROOT/usr/lib/libSDL2-2.0.so.0 release/test_display/lib/ || true
+        # Bundle the SDL2 library we built (with MMIYOO driver)
+        cp $DEPS/lib/libSDL2-2.0.so.0 release/test_display/lib/
         ls -la release/test_display/lib/
 
         cd release
@@ -105,13 +124,42 @@ jobs:
         # Find SDL2
         find /opt/miyoo -name "libSDL2*.so*" 2>/dev/null | head -5 || true
 
-    - name: Build cJSON and SQLite
+    - name: Build SDL2 with MMIYOO driver
       run: |
         set -ex
         export PATH="/opt/miyoo/bin:$PATH"
         export SYSROOT=/opt/miyoo/arm-buildroot-linux-musleabi/sysroot
         export DEPS=$GITHUB_WORKSPACE/deps
         mkdir -p $DEPS/lib $DEPS/include
+
+        # Show toolchain info
+        echo "=== Miyoo Toolchain Info ==="
+        arm-buildroot-linux-musleabi-gcc --version
+
+        # Clone and build SDL2 with MMIYOO driver from steward-fu fork
+        git clone --depth 1 --branch mmiyoo https://github.com/steward-fu/SDL.git SDL2-mmiyoo
+        cd SDL2-mmiyoo
+
+        ./configure --host=arm-buildroot-linux-musleabi --prefix=$DEPS \
+          --enable-shared --disable-static \
+          --enable-video --disable-video-opengl --disable-video-opengles \
+          --disable-video-wayland --disable-video-x11 \
+          --disable-pulseaudio --disable-alsa --disable-jack \
+          --disable-video-vulkan --disable-dbus \
+          CFLAGS="--sysroot=$SYSROOT" \
+          LDFLAGS="--sysroot=$SYSROOT"
+        make -j$(nproc)
+        make install
+
+        ls -la $DEPS/lib/libSDL2*
+        echo "SDL2 with MMIYOO driver built successfully"
+
+    - name: Build cJSON and SQLite
+      run: |
+        set -ex
+        export PATH="/opt/miyoo/bin:$PATH"
+        export SYSROOT=/opt/miyoo/arm-buildroot-linux-musleabi/sysroot
+        export DEPS=$GITHUB_WORKSPACE/deps
 
         # cJSON
         wget -q https://github.com/DaveGamble/cJSON/archive/refs/tags/v1.7.16.tar.gz
@@ -153,17 +201,18 @@ jobs:
         make install
         cd ..
 
-        # SDL2_ttf - link against toolchain's SDL2
+        # SDL2_ttf - link against our built SDL2
         wget -q https://github.com/libsdl-org/SDL_ttf/releases/download/release-2.20.2/SDL2_ttf-2.20.2.tar.gz
         tar xzf SDL2_ttf-2.20.2.tar.gz
         cd SDL2_ttf-2.20.2
-        export PKG_CONFIG_PATH=$DEPS/lib/pkgconfig:$SYSROOT/usr/lib/pkgconfig:$PKG_CONFIG_PATH
+        export PKG_CONFIG_PATH=$DEPS/lib/pkgconfig:$PKG_CONFIG_PATH
         ./configure --host=arm-buildroot-linux-musleabi --prefix=$DEPS \
           --enable-shared --disable-static \
           --disable-freetype-builtin \
           --disable-harfbuzz \
-          CFLAGS="--sysroot=$SYSROOT -I$SYSROOT/usr/include/SDL2" \
-          LDFLAGS="--sysroot=$SYSROOT -L$SYSROOT/usr/lib" \
+          SDL2_CONFIG=$DEPS/bin/sdl2-config \
+          CFLAGS="--sysroot=$SYSROOT -I$DEPS/include/SDL2" \
+          LDFLAGS="--sysroot=$SYSROOT -L$DEPS/lib" \
           FREETYPE_CFLAGS="-I$DEPS/include/freetype2" \
           FREETYPE_LIBS="-L$DEPS/lib -lfreetype"
         make -j$(nproc)
@@ -178,15 +227,17 @@ jobs:
         export SYSROOT=/opt/miyoo/arm-buildroot-linux-musleabi/sysroot
         export DEPS=$GITHUB_WORKSPACE/deps
 
-        # SDL2_image
+        # SDL2_image - link against our built SDL2
         wget -q https://github.com/libsdl-org/SDL_image/releases/download/release-2.6.3/SDL2_image-2.6.3.tar.gz
         tar xzf SDL2_image-2.6.3.tar.gz
         cd SDL2_image-2.6.3
+        export PKG_CONFIG_PATH=$DEPS/lib/pkgconfig:$PKG_CONFIG_PATH
         ./configure --host=arm-buildroot-linux-musleabi --prefix=$DEPS \
           --enable-shared --disable-static \
           --disable-jpg --disable-png-shared --disable-webp --disable-tif \
-          CFLAGS="--sysroot=$SYSROOT -I$SYSROOT/usr/include/SDL2" \
-          LDFLAGS="--sysroot=$SYSROOT -L$SYSROOT/usr/lib"
+          SDL2_CONFIG=$DEPS/bin/sdl2-config \
+          CFLAGS="--sysroot=$SYSROOT -I$DEPS/include/SDL2" \
+          LDFLAGS="--sysroot=$SYSROOT -L$DEPS/lib"
         make -j$(nproc)
         make install
         cd ..
@@ -243,8 +294,8 @@ jobs:
               -DCMAKE_SYSROOT=$SYSROOT \
               -DCMAKE_FIND_ROOT_PATH="$DEPS;$SYSROOT/usr" \
               -DCMAKE_PREFIX_PATH="$DEPS;$SYSROOT/usr" \
-              -DCMAKE_C_FLAGS="-march=armv7-a -mtune=cortex-a7 -mfpu=neon-vfpv4 -mfloat-abi=hard --sysroot=$SYSROOT -I$SYSROOT/usr/include -I$DEPS/include" \
-              -DCMAKE_EXE_LINKER_FLAGS="--sysroot=$SYSROOT -L$SYSROOT/usr/lib -L$DEPS/lib -Wl,-rpath,/mnt/SDCARD/App/HACompanion/lib" \
+              -DCMAKE_C_FLAGS="-march=armv7-a -mtune=cortex-a7 -mfpu=neon-vfpv4 -mfloat-abi=hard --sysroot=$SYSROOT -I$DEPS/include -I$DEPS/include/SDL2 -I$SYSROOT/usr/include" \
+              -DCMAKE_EXE_LINKER_FLAGS="--sysroot=$SYSROOT -L$DEPS/lib -L$SYSROOT/usr/lib -Wl,-rpath,/mnt/SDCARD/App/HACompanion/lib" \
               -DCMAKE_BUILD_TYPE=Release \
               ..
         make -j$(nproc) VERBOSE=1
