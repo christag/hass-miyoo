@@ -31,13 +31,16 @@ jobs:
         echo "=== Toolchain Info ==="
         arm-buildroot-linux-musleabi-gcc --version
 
-        # Clone and build SDL2 with MMIYOO driver from steward-fu fork
-        git clone --depth 1 --branch mmiyoo https://github.com/steward-fu/SDL.git SDL2-mmiyoo
+        # Clone SDL2 with MMIYOO driver from steward-fu's SDL2 fork
+        # NOTE: steward-fu/sdl2 (lowercase) is the SDL2 port, NOT steward-fu/SDL (SDL1)
+        git clone --depth 1 https://github.com/steward-fu/sdl2.git SDL2-mmiyoo
         cd SDL2-mmiyoo
 
+        # Configure SDL2 for Miyoo Mini Plus
         ./configure --host=arm-buildroot-linux-musleabi --prefix=$DEPS \
           --enable-shared --disable-static \
-          --enable-video --disable-video-opengl --disable-video-opengles \
+          --enable-video-mmiyoo \
+          --disable-video-opengl --disable-video-opengles \
           --disable-video-wayland --disable-video-x11 \
           --disable-pulseaudio --disable-alsa --disable-jack \
           --disable-video-vulkan --disable-dbus \
@@ -136,13 +139,16 @@ jobs:
         echo "=== Miyoo Toolchain Info ==="
         arm-buildroot-linux-musleabi-gcc --version
 
-        # Clone and build SDL2 with MMIYOO driver from steward-fu fork
-        git clone --depth 1 --branch mmiyoo https://github.com/steward-fu/SDL.git SDL2-mmiyoo
+        # Clone SDL2 with MMIYOO driver from steward-fu's SDL2 fork
+        # NOTE: steward-fu/sdl2 (lowercase) is the SDL2 port, NOT steward-fu/SDL (SDL1)
+        git clone --depth 1 https://github.com/steward-fu/sdl2.git SDL2-mmiyoo
         cd SDL2-mmiyoo
 
+        # Configure SDL2 for Miyoo Mini Plus
         ./configure --host=arm-buildroot-linux-musleabi --prefix=$DEPS \
           --enable-shared --disable-static \
-          --enable-video --disable-video-opengl --disable-video-opengles \
+          --enable-video-mmiyoo \
+          --disable-video-opengl --disable-video-opengles \
           --disable-video-wayland --disable-video-x11 \
           --disable-pulseaudio --disable-alsa --disable-jack \
           --disable-video-vulkan --disable-dbus \
@@ -315,9 +321,9 @@ jobs:
         cp -r assets release/HACompanion/
         cp assets/icon.png release/HACompanion/icon.png
 
-        # Bundle toolchain's SDL2 library with MMIYOO video driver support
-        cp $SYSROOT/usr/lib/libSDL2-2.0.so.0 release/HACompanion/lib/ || true
-        echo "Bundled toolchain SDL2 library with MMIYOO video driver"
+        # Bundle our built SDL2 library with MMIYOO video driver support
+        cp $DEPS/lib/libSDL2-2.0.so.0 release/HACompanion/lib/ || true
+        echo "Bundled SDL2 library with MMIYOO video driver"
 
         # Bundle all shared SDL2 libraries we built
         cp $DEPS/lib/libSDL2_ttf-2.0.so.0 release/HACompanion/lib/ || true

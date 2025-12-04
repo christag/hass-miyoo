@@ -395,7 +395,13 @@ cat /dev/urandom > /dev/fb0  # Shows static on screen
   - Proper ABI compatibility with MMIYOO SDL2 driver
   - Lower GLIBC requirements (2.4-2.7 instead of 2.28)
   - **Display should actually work!**
-- **Status**: BUILD IN PROGRESS - Waiting for GitHub Actions
+- **Build Errors Fixed**:
+  1. **Wrong compiler prefix**: Changed from `arm-linux-gnueabihf-` to `arm-buildroot-linux-musleabi-` (miyoocfw/toolchain uses musl, not glibc)
+  2. **Wrong sysroot**: Changed from `/opt/miyoo/arm-linux-gnueabihf/libc` to `/opt/miyoo/arm-buildroot-linux-musleabi/sysroot`
+  3. **SDL2 not in toolchain**: The miyoocfw/toolchain only has SDL 1.2, not SDL2
+  4. **Wrong SDL2 repo**: Initially tried `steward-fu/SDL` (SDL 1.2 repo) instead of `steward-fu/sdl2` (SDL2 with MMIYOO driver)
+- **Final Solution**: Build SDL2 from `steward-fu/sdl2` repo (master branch) which contains the MMIYOO video driver
+- **Status**: BUILD IN PROGRESS - Fixed SDL2 repo, pushing new build
 
 ## Next Steps to Try
 
