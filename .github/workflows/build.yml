@@ -60,8 +60,7 @@ jobs:
           -Wl,-rpath,/mnt/SDCARD/App/moonlight/lib \
           -lSDL2
 
-        # Check binary info
-        file test_display
+        # Check binary size
         ls -la test_display
 
     - name: Create test package
