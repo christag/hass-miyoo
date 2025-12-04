@@ -23,14 +23,14 @@ jobs:
       run: |
         set -ex
 
-        # Miyoo toolchain paths
+        # Miyoo toolchain uses musl libc, not glibc!
+        # Compiler prefix: arm-buildroot-linux-musleabi-
         export PATH="/opt/miyoo/bin:$PATH"
-        export CROSS_COMPILE=arm-linux-gnueabihf-
-        export SYSROOT=/opt/miyoo/arm-linux-gnueabihf/libc
+        export SYSROOT=/opt/miyoo/arm-buildroot-linux-musleabi/sysroot
 
         # Show toolchain info
         echo "=== Toolchain Info ==="
-        arm-linux-gnueabihf-gcc --version
+        arm-buildroot-linux-musleabi-gcc --version
         echo "Sysroot: $SYSROOT"
         ls -la $SYSROOT/usr/include/SDL2/ 2>/dev/null || echo "SDL2 headers location may differ"
 
@@ -38,7 +38,7 @@ jobs:
         find /opt/miyoo -name "SDL.h" 2>/dev/null | head -5 || true
 
         # Compile using toolchain's SDL2 (which has MMIYOO driver!)
-        arm-linux-gnueabihf-gcc \
+        arm-buildroot-linux-musleabi-gcc \
           -march=armv7-a -mtune=cortex-a7 -mfpu=neon-vfpv4 -mfloat-abi=hard \
           --sysroot=$SYSROOT \
           -I$SYSROOT/usr/include/SDL2 \
@@ -55,7 +55,7 @@ jobs:
     - name: Create test package
       run: |
         set -ex
-        export SYSROOT=/opt/miyoo/arm-linux-gnueabihf/libc
+        export SYSROOT=/opt/miyoo/arm-buildroot-linux-musleabi/sysroot
 
         mkdir -p release/test_display/lib
         cp test_display release/test_display/
@@ -88,12 +88,13 @@ jobs:
     - name: Setup toolchain environment
       run: |
         set -ex
+        # Miyoo toolchain uses musl libc, not glibc!
         export PATH="/opt/miyoo/bin:$PATH"
-        export CROSS_COMPILE=arm-linux-gnueabihf-
-        export SYSROOT=/opt/miyoo/arm-linux-gnueabihf/libc
+        export CROSS_COMPILE=arm-buildroot-linux-musleabi-
+        export SYSROOT=/opt/miyoo/arm-buildroot-linux-musleabi/sysroot
 
         echo "=== Miyoo Toolchain Info ==="
-        arm-linux-gnueabihf-gcc --version
+        arm-buildroot-linux-musleabi-gcc --version
         echo "Sysroot: $SYSROOT"
 
         # Check what's available in toolchain
@@ -108,7 +109,7 @@ jobs:
       run: |
         set -ex
         export PATH="/opt/miyoo/bin:$PATH"
-        export SYSROOT=/opt/miyoo/arm-linux-gnueabihf/libc
+        export SYSROOT=/opt/miyoo/arm-buildroot-linux-musleabi/sysroot
         export DEPS=$GITHUB_WORKSPACE/deps
         mkdir -p $DEPS/lib $DEPS/include
 
@@ -116,8 +117,8 @@ jobs:
         wget -q https://github.com/DaveGamble/cJSON/archive/refs/tags/v1.7.16.tar.gz
         tar xzf v1.7.16.tar.gz
         cd cJSON-1.7.16
-        arm-linux-gnueabihf-gcc --sysroot=$SYSROOT -c cJSON.c -o cJSON.o -fPIC
-        arm-linux-gnueabihf-ar rcs libcjson.a cJSON.o
+        arm-buildroot-linux-musleabi-gcc --sysroot=$SYSROOT -c cJSON.c -o cJSON.o -fPIC
+        arm-buildroot-linux-musleabi-ar rcs libcjson.a cJSON.o
         cp libcjson.a $DEPS/lib/
         mkdir -p $DEPS/include/cjson
         cp cJSON.h $DEPS/include/cjson/
@@ -127,8 +128,8 @@ jobs:
         wget -q https://www.sqlite.org/2024/sqlite-amalgamation-3450000.zip
         unzip -q sqlite-amalgamation-3450000.zip
         cd sqlite-amalgamation-3450000
-        arm-linux-gnueabihf-gcc --sysroot=$SYSROOT -c sqlite3.c -o sqlite3.o -DSQLITE_OMIT_LOAD_EXTENSION -fPIC
-        arm-linux-gnueabihf-ar rcs libsqlite3.a sqlite3.o
+        arm-buildroot-linux-musleabi-gcc --sysroot=$SYSROOT -c sqlite3.c -o sqlite3.o -DSQLITE_OMIT_LOAD_EXTENSION -fPIC
+        arm-buildroot-linux-musleabi-ar rcs libsqlite3.a sqlite3.o
         cp libsqlite3.a $DEPS/lib/
         cp sqlite3.h sqlite3ext.h $DEPS/include/
 
@@ -136,14 +137,14 @@ jobs:
       run: |
         set -ex
         export PATH="/opt/miyoo/bin:$PATH"
-        export SYSROOT=/opt/miyoo/arm-linux-gnueabihf/libc
+        export SYSROOT=/opt/miyoo/arm-buildroot-linux-musleabi/sysroot
         export DEPS=$GITHUB_WORKSPACE/deps
 
         # Freetype
         wget -q --timeout=120 https://downloads.sourceforge.net/project/freetype/freetype2/2.13.2/freetype-2.13.2.tar.gz
         tar xzf freetype-2.13.2.tar.gz
         cd freetype-2.13.2
-        ./configure --host=arm-linux-gnueabihf --prefix=$DEPS \
+        ./configure --host=arm-buildroot-linux-musleabi --prefix=$DEPS \
           --enable-shared --disable-static \
           --with-zlib=no --with-bzip2=no --with-png=no --with-harfbuzz=no \
           CFLAGS="--sysroot=$SYSROOT" \
@@ -157,7 +158,7 @@ jobs:
         tar xzf SDL2_ttf-2.20.2.tar.gz
         cd SDL2_ttf-2.20.2
         export PKG_CONFIG_PATH=$DEPS/lib/pkgconfig:$SYSROOT/usr/lib/pkgconfig:$PKG_CONFIG_PATH
-        ./configure --host=arm-linux-gnueabihf --prefix=$DEPS \
+        ./configure --host=arm-buildroot-linux-musleabi --prefix=$DEPS \
           --enable-shared --disable-static \
           --disable-freetype-builtin \
           --disable-harfbuzz \
@@ -174,14 +175,14 @@ jobs:
       run: |
         set -ex
         export PATH="/opt/miyoo/bin:$PATH"
-        export SYSROOT=/opt/miyoo/arm-linux-gnueabihf/libc
+        export SYSROOT=/opt/miyoo/arm-buildroot-linux-musleabi/sysroot
         export DEPS=$GITHUB_WORKSPACE/deps
 
         # SDL2_image
         wget -q https://github.com/libsdl-org/SDL_image/releases/download/release-2.6.3/SDL2_image-2.6.3.tar.gz
         tar xzf SDL2_image-2.6.3.tar.gz
         cd SDL2_image-2.6.3
-        ./configure --host=arm-linux-gnueabihf --prefix=$DEPS \
+        ./configure --host=arm-buildroot-linux-musleabi --prefix=$DEPS \
           --enable-shared --disable-static \
           --disable-jpg --disable-png-shared --disable-webp --disable-tif \
           CFLAGS="--sysroot=$SYSROOT -I$SYSROOT/usr/include/SDL2" \
@@ -197,7 +198,7 @@ jobs:
         ./Configure linux-armv4 --prefix=$DEPS \
           --openssldir=$DEPS/ssl \
           no-shared no-tests \
-          --cross-compile-prefix=arm-linux-gnueabihf-
+          --cross-compile-prefix=arm-buildroot-linux-musleabi-
         make -j$(nproc)
         make install_sw
         cd ..
@@ -206,7 +207,7 @@ jobs:
         wget -q https://curl.se/download/curl-8.5.0.tar.gz
         tar xzf curl-8.5.0.tar.gz
         cd curl-8.5.0
-        ./configure --host=arm-linux-gnueabihf --prefix=$DEPS \
+        ./configure --host=arm-buildroot-linux-musleabi --prefix=$DEPS \
           --disable-shared --enable-static \
           --with-openssl=$DEPS \
           --without-zlib --without-brotli --without-zstd \
@@ -227,7 +228,7 @@ jobs:
       run: |
         set -ex
         export PATH="/opt/miyoo/bin:$PATH"
-        export SYSROOT=/opt/miyoo/arm-linux-gnueabihf/libc
+        export SYSROOT=/opt/miyoo/arm-buildroot-linux-musleabi/sysroot
         export DEPS=$GITHUB_WORKSPACE/deps
 
         mkdir -p build-arm
@@ -237,8 +238,8 @@ jobs:
         export PKG_CONFIG_LIBDIR=$PKG_CONFIG_PATH
 
         # Build with Miyoo toolchain - proper ABI for MMIYOO SDL2 driver
-        cmake -DCMAKE_C_COMPILER=arm-linux-gnueabihf-gcc \
-              -DCMAKE_CXX_COMPILER=arm-linux-gnueabihf-g++ \
+        cmake -DCMAKE_C_COMPILER=arm-buildroot-linux-musleabi-gcc \
+              -DCMAKE_CXX_COMPILER=arm-buildroot-linux-musleabi-g++ \
               -DCMAKE_SYSROOT=$SYSROOT \
               -DCMAKE_FIND_ROOT_PATH="$DEPS;$SYSROOT/usr" \
               -DCMAKE_PREFIX_PATH="$DEPS;$SYSROOT/usr" \
@@ -255,7 +256,7 @@ jobs:
     - name: Create Miyoo package
       run: |
         set -ex
-        export SYSROOT=/opt/miyoo/arm-linux-gnueabihf/libc
+        export SYSROOT=/opt/miyoo/arm-buildroot-linux-musleabi/sysroot
         export DEPS=$GITHUB_WORKSPACE/deps
 
         mkdir -p release/HACompanion/lib
