@@ -9,6 +9,77 @@ on:
   workflow_dispatch:
 
 jobs:
+  # Minimal test binary for debugging display issues
+  build-test-display:
+    runs-on: ubuntu-latest
+    container:
+      image: ubuntu:20.04
+      env:
+        DEBIAN_FRONTEND: noninteractive
+        TZ: Etc/UTC
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install ARM cross-compiler
+      run: |
+        apt-get update
+        apt-get install -y gcc-arm-linux-gnueabihf wget zip
+
+    - name: Build minimal SDL2 headers
+      run: |
+        set -ex
+        export SYSROOT=$GITHUB_WORKSPACE/sysroot
+        mkdir -p $SYSROOT/usr/lib $SYSROOT/usr/include
+
+        # SDL2 - Just need headers for compilation, will use Moonlight's libs at runtime
+        wget -q https://github.com/libsdl-org/SDL/releases/download/release-2.28.5/SDL2-2.28.5.tar.gz
+        tar xzf SDL2-2.28.5.tar.gz
+        cd SDL2-2.28.5
+        ./configure --host=arm-linux-gnueabihf --prefix=$SYSROOT/usr \
+          --enable-shared --disable-static \
+          --enable-video --disable-video-opengl --disable-video-opengles \
+          --disable-video-wayland --disable-video-x11 \
+          --disable-pulseaudio --disable-alsa --disable-jack \
+          --disable-video-vulkan --disable-dbus
+        make -j$(nproc)
+        make install
+
+    - name: Build test_display
+      run: |
+        set -ex
+        export SYSROOT=$GITHUB_WORKSPACE/sysroot
+
+        # Compile minimal test program - dynamically linked, will use Moonlight's libs
+        arm-linux-gnueabihf-gcc \
+          -march=armv7-a -mfpu=neon -mfloat-abi=hard \
+          -I$SYSROOT/usr/include/SDL2 \
+          -o test_display \
+          src/test_display.c \
+          -L$SYSROOT/usr/lib \
+          -Wl,-rpath,/mnt/SDCARD/App/moonlight/lib \
+          -lSDL2
+
+        # Check binary info
+        file test_display
+        ls -la test_display
+
+    - name: Create test package
+      run: |
+        mkdir -p release/test_display
+        cp test_display release/test_display/
+        cp dist/test_display/launch.sh release/test_display/
+        chmod +x release/test_display/launch.sh release/test_display/test_display
+
+        cd release
+        zip -r test_display.zip test_display/
+
+    - name: Upload test_display artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-display-miyoo
+        path: release/test_display.zip
+
   build-miyoo-arm:
     runs-on: ubuntu-latest
     container:
@@ -348,7 +419,7 @@ jobs:
 
   # Update v0.1.0 release with latest main branch builds
   update-dev-release:
-    needs: [build-miyoo-arm, build-linux, build-macos]
+    needs: [build-test-display, build-miyoo-arm, build-linux, build-macos]
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
     permissions:
@@ -367,6 +438,7 @@ jobs:
         cd artifacts
         # Rename and organize files
         mv HACompanion-miyoo-arm/HACompanion-miyoo.zip ./HACompanion-miyoo.zip
+        mv test-display-miyoo/test_display.zip ./test_display-miyoo.zip
         mv hacompanion-linux-x86_64/hacompanion ./hacompanion-linux-x86_64-binary
         mv hacompanion-macos/hacompanion ./hacompanion-macos-binary
         chmod +x hacompanion-linux-x86_64-binary hacompanion-macos-binary
@@ -376,12 +448,14 @@ jobs:
       run: |
         # Delete old assets
         gh release delete-asset v0.1.0 HACompanion-miyoo.zip --yes || true
+        gh release delete-asset v0.1.0 test_display-miyoo.zip --yes || true
         gh release delete-asset v0.1.0 hacompanion-linux-x86_64-binary --yes || true
         gh release delete-asset v0.1.0 hacompanion-macos-binary --yes || true
 
         # Upload new assets
         gh release upload v0.1.0 \
           artifacts/HACompanion-miyoo.zip \
+          artifacts/test_display-miyoo.zip \
           artifacts/hacompanion-linux-x86_64-binary \
           artifacts/hacompanion-macos-binary \
           --clobber

@@ -318,6 +318,36 @@ cat /dev/urandom > /dev/fb0  # Shows static on screen
   - App should actually display on Miyoo screen!
 - **Status**: BUILD IN PROGRESS - Waiting for GitHub Actions to complete
 
+### Attempt 16: Reverse-Engineer Working Moonlight App (TESTING)
+- **Date**: 2025-12-04
+- **Strategy Shift**: Instead of continuing to guess what's wrong, we're taking a proven-working app (Moonlight) and working backwards to identify the exact difference.
+- **Key Discovery - Library Comparison**:
+
+  | Library | Moonlight (Working) | HACompanion (Black Screen) |
+  |---------|---------------------|----------------------------|
+  | Binary | 108KB | 3.5MB |
+  | libSDL2-2.0.so.0 | 5.89MB | 5.21MB |
+  | libSDL2_ttf-2.0.so.0 | 41KB | 245KB |
+  | libSDL2_image-2.0.so.0 | 128KB | 730KB |
+  | **libEGL.so** | 55KB | **MISSING** |
+  | **libGLESv1_CM.so** | 29KB | **MISSING** |
+  | **libGLESv2.so** | 21.7MB | **MISSING** |
+
+- **Primary Hypothesis**: Moonlight bundles 21MB+ of EGL/OpenGL ES libraries that HACompanion doesn't have. The MMIYOO SDL2 driver likely uses OpenGL ES internally to render to the framebuffer. Without EGL/GLES libraries, SDL reports success but nothing reaches the screen.
+- **Evidence**:
+  - HACompanion debug.log shows MMIYOO renderer, Flags: 10, 13,000+ frames rendered
+  - Physical screen remains BLACK despite all "successful" rendering
+  - SDL thinks it's rendering, but nothing is displayed
+- **Test Plan**:
+  1. Create minimal `test_display.c` program (just SDL2 + red screen)
+  2. Deploy with **Moonlight's complete library set** (including EGL/GLES)
+  3. If RED screen appears: confirms missing libraries are the issue
+  4. Binary search to find minimum required library set
+- **Files to Create**:
+  - `src/test_display.c` - Minimal SDL2 test
+  - `dist/test_display/launch.sh` - Uses Moonlight's LD_LIBRARY_PATH
+- **Status**: IN PROGRESS - Creating test program
+
 ## Next Steps to Try
 
 ### Option A: Force Dynamic Linking with OnionOS SDL2 - RECOMMENDED
