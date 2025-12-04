@@ -263,7 +263,26 @@ cat /dev/urandom > /dev/fb0  # Shows static on screen
   - Added `SDL_AUDIODRIVER=mmiyoo`
   - Expanded LD_LIBRARY_PATH to: `./lib:/mnt/SDCARD/miyoo/lib:/mnt/SDCARD/.tmp_update/lib:/mnt/SDCARD/.tmp_update/lib/parasyte`
 - **Hypothesis**: The missing `EGL_VIDEODRIVER=mmiyoo` may be critical - EGL is the interface between OpenGL ES and the native windowing system. Without it, the MMIYOO driver may not properly communicate with the framebuffer.
-- **Status**: BUILD QUEUED - Waiting for GitHub Actions
+- **Outcome**: FAILED - Black screen persists
+- **Debug Log**: Same as before - SDL reports MMIYOO renderer, frames cycling correctly in logs, no visual output
+- **Conclusion**: Environment variables are not the issue. The problem is deeper.
+
+### Attempt 14: Fix SDL2 Static Library Causing Symbol Conflict (TESTING)
+- **Date**: 2025-12-04
+- **Root Cause Discovery**: Our SDL2_ttf library is 25MB vs Moonlight's 41KB!
+  - Running `strings` on our SDL2_ttf shows **502 SDL symbols** vs Moonlight's **45**
+  - This means our SDL2_ttf has SDL2 **statically linked inside it**
+  - The statically-linked SDL2 has a non-functional MMIYOO driver stub
+  - When our app runs, SDL2_ttf's embedded SDL2 code may interfere with the actual MMIYOO driver
+- **Why This Happened**: GitHub Actions builds SDL2 with `--enable-shared --enable-static`
+  - When SDL2_ttf links against SDL2, it prefers the static library
+  - This embeds vanilla SDL2 (without working MMIYOO driver) into SDL2_ttf
+- **The Fix**: Change SDL2 build from `--enable-shared --enable-static` to `--enable-shared --disable-static`
+  - This ensures only the shared library exists
+  - SDL2_ttf will dynamically link to SDL2 instead of embedding it
+  - At runtime, the proper OnionOS SDL2 with MMIYOO driver will be used
+- **Expected Result**: SDL2_ttf should shrink from 25MB to ~50KB, no embedded SDL2 symbols
+- **Status**: BUILD QUEUED
 
 ### Attempt 11: Switch to Dynamic Linking (CONFIRMED WORKING)
 - **Date**: 2025-11-24
