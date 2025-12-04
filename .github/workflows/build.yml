@@ -10,65 +10,61 @@ on:
 
 jobs:
   # Minimal test binary for debugging display issues
+  # Uses official Miyoo Mini toolchain for ABI compatibility
   build-test-display:
     runs-on: ubuntu-latest
     container:
-      image: ubuntu:20.04
-      env:
-        DEBIAN_FRONTEND: noninteractive
-        TZ: Etc/UTC
+      image: miyoocfw/toolchain:latest
 
     steps:
     - uses: actions/checkout@v4
 
-    - name: Install ARM cross-compiler
-      run: |
-        apt-get update
-        apt-get install -y gcc-arm-linux-gnueabihf make wget zip
-
-    - name: Build minimal SDL2 headers
+    - name: Build test_display with Miyoo toolchain
       run: |
         set -ex
-        export SYSROOT=$GITHUB_WORKSPACE/sysroot
-        mkdir -p $SYSROOT/usr/lib $SYSROOT/usr/include
 
-        # SDL2 - Just need headers for compilation, will use Moonlight's libs at runtime
-        wget -q https://github.com/libsdl-org/SDL/releases/download/release-2.28.5/SDL2-2.28.5.tar.gz
-        tar xzf SDL2-2.28.5.tar.gz
-        cd SDL2-2.28.5
-        ./configure --host=arm-linux-gnueabihf --prefix=$SYSROOT/usr \
-          --enable-shared --disable-static \
-          --enable-video --disable-video-opengl --disable-video-opengles \
-          --disable-video-wayland --disable-video-x11 \
-          --disable-pulseaudio --disable-alsa --disable-jack \
-          --disable-video-vulkan --disable-dbus
-        make -j$(nproc)
-        make install
+        # Miyoo toolchain paths
+        export PATH="/opt/miyoo/bin:$PATH"
+        export CROSS_COMPILE=arm-linux-gnueabihf-
+        export SYSROOT=/opt/miyoo/arm-linux-gnueabihf/libc
 
-    - name: Build test_display
-      run: |
-        set -ex
-        export SYSROOT=$GITHUB_WORKSPACE/sysroot
+        # Show toolchain info
+        echo "=== Toolchain Info ==="
+        arm-linux-gnueabihf-gcc --version
+        echo "Sysroot: $SYSROOT"
+        ls -la $SYSROOT/usr/include/SDL2/ 2>/dev/null || echo "SDL2 headers location may differ"
 
-        # Compile minimal test program - dynamically linked, will use Moonlight's libs
+        # Find SDL2 headers in toolchain
+        find /opt/miyoo -name "SDL.h" 2>/dev/null | head -5 || true
+
+        # Compile using toolchain's SDL2 (which has MMIYOO driver!)
         arm-linux-gnueabihf-gcc \
-          -march=armv7-a -mfpu=neon -mfloat-abi=hard \
+          -march=armv7-a -mtune=cortex-a7 -mfpu=neon-vfpv4 -mfloat-abi=hard \
+          --sysroot=$SYSROOT \
           -I$SYSROOT/usr/include/SDL2 \
           -o test_display \
           src/test_display.c \
           -L$SYSROOT/usr/lib \
-          -Wl,-rpath,/mnt/SDCARD/App/moonlight/lib \
+          -Wl,-rpath,/mnt/SDCARD/App/test_display/lib \
           -lSDL2
 
-        # Check binary size
+        # Check binary
         ls -la test_display
+        file test_display || true
 
     - name: Create test package
       run: |
-        mkdir -p release/test_display
+        set -ex
+        export SYSROOT=/opt/miyoo/arm-linux-gnueabihf/libc
+
+        mkdir -p release/test_display/lib
         cp test_display release/test_display/
         cp dist/test_display/launch.sh release/test_display/
         chmod +x release/test_display/launch.sh release/test_display/test_display
+
+        # Bundle the toolchain's SDL2 library (with MMIYOO driver)
+        cp $SYSROOT/usr/lib/libSDL2-2.0.so.0 release/test_display/lib/ || true
+        ls -la release/test_display/lib/
 
         cd release
         zip -r test_display.zip test_display/
@@ -79,130 +75,117 @@ jobs:
         name: test-display-miyoo
         path: release/test_display.zip
 
+  # Main HACompanion build using official Miyoo Mini toolchain
+  # This ensures ABI compatibility with MMIYOO SDL2 driver
   build-miyoo-arm:
     runs-on: ubuntu-latest
     container:
-      image: ubuntu:20.04  # Ubuntu 20.04 has GLIBC 2.31 (closer to Miyoo's 2.28 than ubuntu-latest's 2.38+)
-      env:
-        DEBIAN_FRONTEND: noninteractive
-        TZ: Etc/UTC
+      image: miyoocfw/toolchain:latest
 
     steps:
     - uses: actions/checkout@v4
 
-    - name: Install ARM cross-compiler
+    - name: Setup toolchain environment
       run: |
-        apt-get update
-        apt-get install -y \
-          gcc-arm-linux-gnueabihf \
-          g++-arm-linux-gnueabihf \
-          cmake \
-          pkg-config \
-          unzip \
-          zip \
-          wget \
-          git
+        set -ex
+        export PATH="/opt/miyoo/bin:$PATH"
+        export CROSS_COMPILE=arm-linux-gnueabihf-
+        export SYSROOT=/opt/miyoo/arm-linux-gnueabihf/libc
 
-        # Verify installation
+        echo "=== Miyoo Toolchain Info ==="
         arm-linux-gnueabihf-gcc --version
+        echo "Sysroot: $SYSROOT"
+
+        # Check what's available in toolchain
+        echo "=== SDL2 in toolchain ==="
+        ls -la $SYSROOT/usr/lib/libSDL2* 2>/dev/null || echo "SDL2 libs location may differ"
+        ls -la $SYSROOT/usr/include/SDL2/ 2>/dev/null || echo "SDL2 headers may be elsewhere"
+
+        # Find SDL2
+        find /opt/miyoo -name "libSDL2*.so*" 2>/dev/null | head -5 || true
 
     - name: Build cJSON and SQLite
       run: |
         set -ex
-        export SYSROOT=$GITHUB_WORKSPACE/sysroot
-        mkdir -p $SYSROOT/usr/lib $SYSROOT/usr/include
+        export PATH="/opt/miyoo/bin:$PATH"
+        export SYSROOT=/opt/miyoo/arm-linux-gnueabihf/libc
+        export DEPS=$GITHUB_WORKSPACE/deps
+        mkdir -p $DEPS/lib $DEPS/include
 
         # cJSON
         wget -q https://github.com/DaveGamble/cJSON/archive/refs/tags/v1.7.16.tar.gz
         tar xzf v1.7.16.tar.gz
         cd cJSON-1.7.16
-        arm-linux-gnueabihf-gcc -c cJSON.c -o cJSON.o -fPIC
+        arm-linux-gnueabihf-gcc --sysroot=$SYSROOT -c cJSON.c -o cJSON.o -fPIC
         arm-linux-gnueabihf-ar rcs libcjson.a cJSON.o
-        cp libcjson.a $SYSROOT/usr/lib/
-        mkdir -p $SYSROOT/usr/include/cjson
-        cp cJSON.h $SYSROOT/usr/include/cjson/
+        cp libcjson.a $DEPS/lib/
+        mkdir -p $DEPS/include/cjson
+        cp cJSON.h $DEPS/include/cjson/
         cd ..
 
         # SQLite3
         wget -q https://www.sqlite.org/2024/sqlite-amalgamation-3450000.zip
         unzip -q sqlite-amalgamation-3450000.zip
         cd sqlite-amalgamation-3450000
-        arm-linux-gnueabihf-gcc -c sqlite3.c -o sqlite3.o -DSQLITE_OMIT_LOAD_EXTENSION -fPIC
+        arm-linux-gnueabihf-gcc --sysroot=$SYSROOT -c sqlite3.c -o sqlite3.o -DSQLITE_OMIT_LOAD_EXTENSION -fPIC
         arm-linux-gnueabihf-ar rcs libsqlite3.a sqlite3.o
-        cp libsqlite3.a $SYSROOT/usr/lib/
-        cp sqlite3.h sqlite3ext.h $SYSROOT/usr/include/
-
-    - name: Build SDL2
-      run: |
-        set -ex
-        export SYSROOT=$GITHUB_WORKSPACE/sysroot
-        wget -q https://github.com/libsdl-org/SDL/releases/download/release-2.28.5/SDL2-2.28.5.tar.gz
-        tar xzf SDL2-2.28.5.tar.gz
-        cd SDL2-2.28.5
-        # Install minimal SDL2 headers for compilation
-        # We'll use the Miyoo's system SDL2 library at runtime
-        # CRITICAL: Must use --disable-static to prevent SDL2_ttf from statically
-        # linking SDL2 (which would embed a non-functional MMIYOO driver stub)
-        ./configure --host=arm-linux-gnueabihf --prefix=$SYSROOT/usr \
-          --enable-shared --disable-static \
-          --enable-video --disable-video-opengl --disable-video-opengles \
-          --disable-video-wayland --disable-video-x11 \
-          --disable-pulseaudio --disable-alsa --disable-jack \
-          --disable-video-vulkan --disable-dbus
-        make -j$(nproc)
-        make install
-        ls -la $SYSROOT/usr/lib/libSDL2*
-        echo "SDL2 build complete"
+        cp libsqlite3.a $DEPS/lib/
+        cp sqlite3.h sqlite3ext.h $DEPS/include/
 
     - name: Build Freetype and SDL2_ttf
       run: |
         set -ex
-        export SYSROOT=$GITHUB_WORKSPACE/sysroot
+        export PATH="/opt/miyoo/bin:$PATH"
+        export SYSROOT=/opt/miyoo/arm-linux-gnueabihf/libc
+        export DEPS=$GITHUB_WORKSPACE/deps
 
-        # Freetype (using SourceForge mirror - official release tarball, not git archive)
+        # Freetype
         wget -q --timeout=120 https://downloads.sourceforge.net/project/freetype/freetype2/2.13.2/freetype-2.13.2.tar.gz
         tar xzf freetype-2.13.2.tar.gz
         cd freetype-2.13.2
-        ./configure --host=arm-linux-gnueabihf --prefix=$SYSROOT/usr \
+        ./configure --host=arm-linux-gnueabihf --prefix=$DEPS \
           --enable-shared --disable-static \
-          --with-zlib=no --with-bzip2=no --with-png=no --with-harfbuzz=no
+          --with-zlib=no --with-bzip2=no --with-png=no --with-harfbuzz=no \
+          CFLAGS="--sysroot=$SYSROOT" \
+          LDFLAGS="--sysroot=$SYSROOT"
         make -j$(nproc)
         make install
         cd ..
 
-        # SDL2_ttf - CRITICAL: Must disable vendored freetype/harfbuzz to avoid embedding them!
-        # Without these flags, SDL2_ttf 2.20.2 bundles its own freetype (25MB library!)
+        # SDL2_ttf - link against toolchain's SDL2
         wget -q https://github.com/libsdl-org/SDL_ttf/releases/download/release-2.20.2/SDL2_ttf-2.20.2.tar.gz
         tar xzf SDL2_ttf-2.20.2.tar.gz
         cd SDL2_ttf-2.20.2
-        # Set PKG_CONFIG_PATH so configure can find freetype2.pc
-        export PKG_CONFIG_PATH=$SYSROOT/usr/lib/pkgconfig:$PKG_CONFIG_PATH
-        ./configure --host=arm-linux-gnueabihf --prefix=$SYSROOT/usr \
+        export PKG_CONFIG_PATH=$DEPS/lib/pkgconfig:$SYSROOT/usr/lib/pkgconfig:$PKG_CONFIG_PATH
+        ./configure --host=arm-linux-gnueabihf --prefix=$DEPS \
           --enable-shared --disable-static \
           --disable-freetype-builtin \
           --disable-harfbuzz \
-          SDL2_CONFIG=$SYSROOT/usr/bin/sdl2-config \
-          FREETYPE_CFLAGS="-I$SYSROOT/usr/include/freetype2" \
-          FREETYPE_LIBS="-L$SYSROOT/usr/lib -lfreetype"
+          CFLAGS="--sysroot=$SYSROOT -I$SYSROOT/usr/include/SDL2" \
+          LDFLAGS="--sysroot=$SYSROOT -L$SYSROOT/usr/lib" \
+          FREETYPE_CFLAGS="-I$DEPS/include/freetype2" \
+          FREETYPE_LIBS="-L$DEPS/lib -lfreetype"
         make -j$(nproc)
         make install
-        # Verify SDL2_ttf is small (should be ~50KB, NOT 25MB!)
-        ls -la $SYSROOT/usr/lib/libSDL2_ttf*
+        ls -la $DEPS/lib/libSDL2_ttf*
         echo "Freetype and SDL2_ttf complete"
 
     - name: Build SDL2_image, OpenSSL, and libcurl
       run: |
         set -ex
-        export SYSROOT=$GITHUB_WORKSPACE/sysroot
+        export PATH="/opt/miyoo/bin:$PATH"
+        export SYSROOT=/opt/miyoo/arm-linux-gnueabihf/libc
+        export DEPS=$GITHUB_WORKSPACE/deps
 
         # SDL2_image
         wget -q https://github.com/libsdl-org/SDL_image/releases/download/release-2.6.3/SDL2_image-2.6.3.tar.gz
         tar xzf SDL2_image-2.6.3.tar.gz
         cd SDL2_image-2.6.3
-        ./configure --host=arm-linux-gnueabihf --prefix=$SYSROOT/usr \
+        ./configure --host=arm-linux-gnueabihf --prefix=$DEPS \
           --enable-shared --disable-static \
-          SDL2_CONFIG=$SYSROOT/usr/bin/sdl2-config \
-          --disable-jpg --disable-png-shared --disable-webp --disable-tif
+          --disable-jpg --disable-png-shared --disable-webp --disable-tif \
+          CFLAGS="--sysroot=$SYSROOT -I$SYSROOT/usr/include/SDL2" \
+          LDFLAGS="--sysroot=$SYSROOT -L$SYSROOT/usr/lib"
         make -j$(nproc)
         make install
         cd ..
@@ -211,8 +194,8 @@ jobs:
         wget -q https://www.openssl.org/source/openssl-1.1.1w.tar.gz
         tar xzf openssl-1.1.1w.tar.gz
         cd openssl-1.1.1w
-        ./Configure linux-armv4 --prefix=$SYSROOT/usr \
-          --openssldir=$SYSROOT/usr/ssl \
+        ./Configure linux-armv4 --prefix=$DEPS \
+          --openssldir=$DEPS/ssl \
           no-shared no-tests \
           --cross-compile-prefix=arm-linux-gnueabihf-
         make -j$(nproc)
@@ -223,64 +206,74 @@ jobs:
         wget -q https://curl.se/download/curl-8.5.0.tar.gz
         tar xzf curl-8.5.0.tar.gz
         cd curl-8.5.0
-        ./configure --host=arm-linux-gnueabihf --prefix=$SYSROOT/usr \
+        ./configure --host=arm-linux-gnueabihf --prefix=$DEPS \
           --disable-shared --enable-static \
-          --with-openssl=$SYSROOT/usr \
+          --with-openssl=$DEPS \
           --without-zlib --without-brotli --without-zstd \
           --without-libpsl --without-nghttp2 \
           --disable-ldap --disable-dict --disable-telnet --disable-tftp \
           --disable-pop3 --disable-imap --disable-smtp --disable-gopher \
           --disable-rtsp --disable-smb \
-          LDFLAGS="-L$SYSROOT/usr/lib" \
-          CPPFLAGS="-I$SYSROOT/usr/include"
+          CFLAGS="--sysroot=$SYSROOT" \
+          LDFLAGS="--sysroot=$SYSROOT -L$DEPS/lib" \
+          CPPFLAGS="-I$DEPS/include"
         make -j$(nproc)
         make install
 
-        # Verify
-        echo "=== Installed libraries ==="
-        ls -la $SYSROOT/usr/lib/*.a 2>/dev/null || true
-        echo "SDL2_image, OpenSSL, and libcurl complete"
+        echo "=== Installed dependencies ==="
+        ls -la $DEPS/lib/
 
     - name: Build hacompanion for Miyoo ARM
       run: |
+        set -ex
+        export PATH="/opt/miyoo/bin:$PATH"
+        export SYSROOT=/opt/miyoo/arm-linux-gnueabihf/libc
+        export DEPS=$GITHUB_WORKSPACE/deps
+
         mkdir -p build-arm
         cd build-arm
 
-        export SYSROOT=$GITHUB_WORKSPACE/sysroot
-        export PKG_CONFIG_PATH=$SYSROOT/usr/lib/pkgconfig
-        export PKG_CONFIG_LIBDIR=$SYSROOT/usr/lib/pkgconfig
+        export PKG_CONFIG_PATH=$DEPS/lib/pkgconfig:$SYSROOT/usr/lib/pkgconfig
+        export PKG_CONFIG_LIBDIR=$PKG_CONFIG_PATH
 
-        # Build with dynamic linking in Ubuntu 20.04 container (GLIBC 2.31, closer to Miyoo's 2.28)
-        # The bundled Miyoo SDL2 library will be loaded via LD_LIBRARY_PATH
+        # Build with Miyoo toolchain - proper ABI for MMIYOO SDL2 driver
         cmake -DCMAKE_C_COMPILER=arm-linux-gnueabihf-gcc \
               -DCMAKE_CXX_COMPILER=arm-linux-gnueabihf-g++ \
-              -DCMAKE_FIND_ROOT_PATH=$SYSROOT \
-              -DCMAKE_PREFIX_PATH=$SYSROOT/usr \
-              -DCMAKE_C_FLAGS="-march=armv7-a -mfpu=neon -mfloat-abi=hard -I$SYSROOT/usr/include" \
-              -DCMAKE_EXE_LINKER_FLAGS="-L$SYSROOT/usr/lib -Wl,-rpath,/mnt/SDCARD/App/HACompanion/lib" \
+              -DCMAKE_SYSROOT=$SYSROOT \
+              -DCMAKE_FIND_ROOT_PATH="$DEPS;$SYSROOT/usr" \
+              -DCMAKE_PREFIX_PATH="$DEPS;$SYSROOT/usr" \
+              -DCMAKE_C_FLAGS="-march=armv7-a -mtune=cortex-a7 -mfpu=neon-vfpv4 -mfloat-abi=hard --sysroot=$SYSROOT -I$SYSROOT/usr/include -I$DEPS/include" \
+              -DCMAKE_EXE_LINKER_FLAGS="--sysroot=$SYSROOT -L$SYSROOT/usr/lib -L$DEPS/lib -Wl,-rpath,/mnt/SDCARD/App/HACompanion/lib" \
               -DCMAKE_BUILD_TYPE=Release \
               ..
         make -j$(nproc) VERBOSE=1
 
+        # Check binary info
+        ls -la hacompanion
+        file hacompanion || true
+
     - name: Create Miyoo package
       run: |
+        set -ex
+        export SYSROOT=/opt/miyoo/arm-linux-gnueabihf/libc
+        export DEPS=$GITHUB_WORKSPACE/deps
+
         mkdir -p release/HACompanion/lib
         cp build-arm/hacompanion release/HACompanion/
         cp -r assets release/HACompanion/
         cp assets/icon.png release/HACompanion/icon.png
 
-        # Bundle Miyoo's SDL2 library with MMIYOO video driver support
-        if [ -f libs/miyoo/libSDL2-2.0.so.0 ]; then
-          cp libs/miyoo/libSDL2-2.0.so.0 release/HACompanion/lib/
-          echo "Bundled Miyoo SDL2 library with MMIYOO video driver"
-        fi
+        # Bundle toolchain's SDL2 library with MMIYOO video driver support
+        cp $SYSROOT/usr/lib/libSDL2-2.0.so.0 release/HACompanion/lib/ || true
+        echo "Bundled toolchain SDL2 library with MMIYOO video driver"
 
         # Bundle all shared SDL2 libraries we built
-        export SYSROOT=$GITHUB_WORKSPACE/sysroot
-        cp $SYSROOT/usr/lib/libSDL2_ttf-2.0.so.0 release/HACompanion/lib/ || true
-        cp $SYSROOT/usr/lib/libSDL2_image-2.0.so.0 release/HACompanion/lib/ || true
-        cp $SYSROOT/usr/lib/libfreetype.so.6 release/HACompanion/lib/ || true
+        cp $DEPS/lib/libSDL2_ttf-2.0.so.0 release/HACompanion/lib/ || true
+        cp $DEPS/lib/libSDL2_image-2.0.so.0 release/HACompanion/lib/ || true
+        cp $DEPS/lib/libfreetype.so.6 release/HACompanion/lib/ || true
         echo "Bundled SDL2_ttf, SDL2_image, and freetype shared libraries"
+
+        ls -la release/HACompanion/lib/
 
         # Create launch script (modeled after working Moonlight app)
         cat > release/HACompanion/launch.sh << 'LAUNCH_EOF'

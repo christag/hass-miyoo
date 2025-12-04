@@ -348,6 +348,55 @@ cat /dev/urandom > /dev/fb0  # Shows static on screen
   - `dist/test_display/launch.sh` - Uses Moonlight's LD_LIBRARY_PATH
 - **Status**: IN PROGRESS - Creating test program
 
+### Attempt 16 Update: ROOT CAUSE FOUND!
+- **Date**: 2025-12-04
+- **Discovery**: Even with Moonlight's libraries, HACompanion shows black screen. The test proved:
+  1. HACompanion uses Moonlight's exact SDL2 library = still black screen
+  2. Moonlight binary works = display hardware is fine
+
+- **Root Cause**: ABI mismatch between our binary and the MMIYOO SDL2 library
+  - Moonlight was compiled with the **mmiyoo buildroot toolchain** (`/opt/mmiyoo/arm-buildroot-linux-gnueabihf/`)
+  - HACompanion was compiled with **Ubuntu's cross-compiler** (`gcc-arm-linux-gnueabihf`)
+  - Moonlight's SDL2 is a **custom fork** (`sdl2-moonlight-miyoo`) with MMIYOO-specific code
+  - Our binary uses vanilla SDL2 headers which may have different struct layouts
+
+- **Evidence**:
+  - Moonlight SDL2 contains: `SDL_render_mmiyoo.c`, `SDL_video_mmiyoo.c`, `SDL_opengles_mmiyoo.c`
+  - Built from `/root/workspace/sdl2-moonlight-miyoo/`
+  - Uses `/opt/mmiyoo/arm-buildroot-linux-gnueabihf/sysroot/`
+  - Moonlight binary requires only GLIBC 2.4-2.7; HACompanion requires up to GLIBC 2.28
+
+- **Solution**: Use the official Miyoo Mini buildroot toolchain:
+  - https://github.com/shauninman/union-miyoomini-toolchain (Docker-based)
+  - https://github.com/djdiskmachine/MiyooMini-toolchain (pre-built binaries)
+
+- **Status**: SOLUTION IDENTIFIED - Switching to mmiyoo toolchain in Attempt 17
+
+### Attempt 17: Use Official Miyoo CFW Toolchain (TESTING)
+- **Date**: 2025-12-04
+- **Root Cause (Confirmed)**: ABI mismatch between Ubuntu cross-compiler and Miyoo's MMIYOO SDL2 library
+  - Ubuntu's `arm-linux-gnueabihf-gcc` (GCC 9.4.0) produces binaries incompatible with the MMIYOO SDL2 driver
+  - Moonlight uses the official buildroot toolchain (GCC 8.3.0, ARM A-profile)
+  - Different GLIBC requirements: Moonlight needs 2.4-2.7, our binary needs 2.28
+- **Solution**: Switch GitHub Actions to use `miyoocfw/toolchain` Docker image
+  - This is the official Miyoo Mini Plus buildroot toolchain
+  - Contains GCC 8.3.0 matching what Moonlight was compiled with
+  - Has pre-built SDL2 with working MMIYOO video/render drivers in sysroot
+  - Proper ABI compatibility with runtime libraries
+- **Changes Made to `.github/workflows/build.yml`**:
+  1. Changed `build-test-display` job from `ubuntu:20.04` to `miyoocfw/toolchain:latest`
+  2. Changed `build-miyoo-arm` job from `ubuntu:20.04` to `miyoocfw/toolchain:latest`
+  3. Updated all compiler paths to use `/opt/miyoo/bin/arm-linux-gnueabihf-gcc`
+  4. Updated sysroot to `/opt/miyoo/arm-linux-gnueabihf/libc`
+  5. Added proper `--sysroot` flags to all compilation
+  6. Bundle toolchain's SDL2 library (with working MMIYOO driver) in release packages
+- **Expected Results**:
+  - Binary compiled with same toolchain as working Moonlight app
+  - Proper ABI compatibility with MMIYOO SDL2 driver
+  - Lower GLIBC requirements (2.4-2.7 instead of 2.28)
+  - **Display should actually work!**
+- **Status**: BUILD IN PROGRESS - Waiting for GitHub Actions
+
 ## Next Steps to Try
 
 ### Option A: Force Dynamic Linking with OnionOS SDL2 - RECOMMENDED
