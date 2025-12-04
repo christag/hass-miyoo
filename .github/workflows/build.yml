@@ -100,17 +100,22 @@ jobs:
         make install
         cd ..
 
-        # SDL2_ttf
+        # SDL2_ttf - CRITICAL: Must disable vendored freetype/harfbuzz to avoid embedding them!
+        # Without these flags, SDL2_ttf 2.20.2 bundles its own freetype (25MB library!)
         wget -q https://github.com/libsdl-org/SDL_ttf/releases/download/release-2.20.2/SDL2_ttf-2.20.2.tar.gz
         tar xzf SDL2_ttf-2.20.2.tar.gz
         cd SDL2_ttf-2.20.2
         ./configure --host=arm-linux-gnueabihf --prefix=$SYSROOT/usr \
           --enable-shared --disable-static \
+          --disable-freetype-builtin \
+          --disable-harfbuzz \
           SDL2_CONFIG=$SYSROOT/usr/bin/sdl2-config \
           FREETYPE_CFLAGS="-I$SYSROOT/usr/include/freetype2" \
           FREETYPE_LIBS="-L$SYSROOT/usr/lib -lfreetype"
         make -j$(nproc)
         make install
+        # Verify SDL2_ttf is small (should be ~50KB, NOT 25MB!)
+        ls -la $SYSROOT/usr/lib/libSDL2_ttf*
         echo "Freetype and SDL2_ttf complete"
 
     - name: Build SDL2_image, OpenSSL, and libcurl

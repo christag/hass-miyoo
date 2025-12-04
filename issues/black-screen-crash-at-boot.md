@@ -267,7 +267,7 @@ cat /dev/urandom > /dev/fb0  # Shows static on screen
 - **Debug Log**: Same as before - SDL reports MMIYOO renderer, frames cycling correctly in logs, no visual output
 - **Conclusion**: Environment variables are not the issue. The problem is deeper.
 
-### Attempt 14: Fix SDL2 Static Library Causing Symbol Conflict (TESTING)
+### Attempt 14: Fix SDL2 Static Library Causing Symbol Conflict (FAILED - INCOMPLETE FIX)
 - **Date**: 2025-12-04
 - **Root Cause Discovery**: Our SDL2_ttf library is 25MB vs Moonlight's 41KB!
   - Running `strings` on our SDL2_ttf shows **502 SDL symbols** vs Moonlight's **45**
@@ -277,11 +277,21 @@ cat /dev/urandom > /dev/fb0  # Shows static on screen
 - **Why This Happened**: GitHub Actions builds SDL2 with `--enable-shared --enable-static`
   - When SDL2_ttf links against SDL2, it prefers the static library
   - This embeds vanilla SDL2 (without working MMIYOO driver) into SDL2_ttf
-- **The Fix**: Change SDL2 build from `--enable-shared --enable-static` to `--enable-shared --disable-static`
-  - This ensures only the shared library exists
-  - SDL2_ttf will dynamically link to SDL2 instead of embedding it
-  - At runtime, the proper OnionOS SDL2 with MMIYOO driver will be used
-- **Expected Result**: SDL2_ttf should shrink from 25MB to ~50KB, no embedded SDL2 symbols
+- **The Fix (Incomplete)**: Changed SDL2 build from `--enable-shared --enable-static` to `--enable-shared --disable-static`
+- **Result**: SDL2_ttf was STILL 25MB after the fix!
+- **Why It Failed**: SDL2_ttf 2.20.2 has a DIFFERENT issue - it **bundles its own internal copies** of freetype and harfbuzz from `external/` directories regardless of what we pass for SDL2 flags
+- **Status**: FAILED - Led to Attempt 15
+
+### Attempt 15: Disable SDL2_ttf Vendored Libraries (TESTING)
+- **Date**: 2025-12-04
+- **Root Cause (Updated)**: SDL2_ttf 2.20.2 has `--enable-freetype-builtin` and `--enable-harfbuzz-builtin` enabled by DEFAULT
+  - This causes SDL2_ttf to compile its own copies of freetype and harfbuzz from `external/` subdirectories
+  - Even with our externally-built freetype, SDL2_ttf ignores it and uses its bundled version
+  - This results in a 25MB library that embeds both freetype AND harfbuzz
+- **The Fix**: Add configure flags to SDL2_ttf build:
+  - `--disable-freetype-builtin` - Use external freetype instead of bundled
+  - `--disable-harfbuzz` - Disable harfbuzz entirely (we don't need advanced text shaping)
+- **Expected Result**: SDL2_ttf should shrink from 25MB to ~50KB
 - **Status**: BUILD QUEUED
 
 ### Attempt 11: Switch to Dynamic Linking (CONFIRMED WORKING)
