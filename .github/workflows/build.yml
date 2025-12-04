@@ -105,6 +105,8 @@ jobs:
         wget -q https://github.com/libsdl-org/SDL_ttf/releases/download/release-2.20.2/SDL2_ttf-2.20.2.tar.gz
         tar xzf SDL2_ttf-2.20.2.tar.gz
         cd SDL2_ttf-2.20.2
+        # Set PKG_CONFIG_PATH so configure can find freetype2.pc
+        export PKG_CONFIG_PATH=$SYSROOT/usr/lib/pkgconfig:$PKG_CONFIG_PATH
         ./configure --host=arm-linux-gnueabihf --prefix=$SYSROOT/usr \
           --enable-shared --disable-static \
           --disable-freetype-builtin \
