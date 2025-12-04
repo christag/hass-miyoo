@@ -229,7 +229,43 @@ cat /dev/urandom > /dev/fb0  # Shows static on screen
   - SDL2_image: `--disable-shared --enable-static`
 - **Impact**: This forced static linking, baking vanilla SDL2 (with non-functional MMIYOO stub driver) directly into the binary
 
-### Attempt 11: Switch to Dynamic Linking (FIX IN PROGRESS)
+### Attempt 12: Remove SDL_RENDERER_PRESENTVSYNC (FAILED)
+- **Date**: 2025-11-27
+- **Commit**: 869eab9
+- **Description**: Research into XK9274/miyoo_sdl2_benchmarks render_suite revealed that working Miyoo apps use `SDL_RENDERER_ACCELERATED` **WITHOUT** `SDL_RENDERER_PRESENTVSYNC`. The render_suite benchmark, which renders complex scenes with particles, geometry, and overlays, explicitly avoids PRESENTVSYNC.
+- **Fix Applied**: Changed renderer creation from:
+  ```c
+  SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+  ```
+  To:
+  ```c
+  SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
+  ```
+- **Outcome**: FAILED - Black screen persists
+- **Debug Log Analysis**:
+  - SDL still reports `Flags: 10` (ACCELERATED | PRESENTVSYNC) - the MMIYOO driver appears to add PRESENTVSYNC regardless of what we request
+  - Color cycling test runs correctly in logs but nothing visible on screen
+  - This suggests the PRESENTVSYNC flag is NOT the root cause
+- **Conclusion**: The MMIYOO driver controls renderer flags internally; our requested flags are suggestions, not requirements. The black screen issue is something else.
+
+### Attempt 13: Match Moonlight Launch Script Configuration (TESTING)
+- **Date**: 2025-12-04
+- **Description**: Analyzed working Moonlight app's launch script and found significant differences:
+  1. **Moonlight does NOT use pressMenu2Kill** - just launches directly
+  2. **Moonlight sets THREE driver env vars**:
+     - `SDL_VIDEODRIVER=mmiyoo`
+     - `SDL_AUDIODRIVER=mmiyoo`
+     - `EGL_VIDEODRIVER=mmiyoo` (WE WERE MISSING THIS!)
+  3. **Moonlight uses full LD_LIBRARY_PATH** including parasyte
+- **Changes Made**:
+  - Removed pressMenu2Kill from launch script
+  - Added `EGL_VIDEODRIVER=mmiyoo`
+  - Added `SDL_AUDIODRIVER=mmiyoo`
+  - Expanded LD_LIBRARY_PATH to: `./lib:/mnt/SDCARD/miyoo/lib:/mnt/SDCARD/.tmp_update/lib:/mnt/SDCARD/.tmp_update/lib/parasyte`
+- **Hypothesis**: The missing `EGL_VIDEODRIVER=mmiyoo` may be critical - EGL is the interface between OpenGL ES and the native windowing system. Without it, the MMIYOO driver may not properly communicate with the framebuffer.
+- **Status**: BUILD QUEUED - Waiting for GitHub Actions
+
+### Attempt 11: Switch to Dynamic Linking (CONFIRMED WORKING)
 - **Date**: 2025-11-24
 - **Commits**: e747531, 6b8b47c
 - **Description**: Changed all SDL2 dependencies to build as shared libraries instead of static
