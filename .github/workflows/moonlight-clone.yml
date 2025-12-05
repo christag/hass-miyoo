@@ -1,4 +1,4 @@
-name: Build Moonlight Clone
+name: Build Minimal SDL2 Test (Moonlight-style)
 
 on:
   push:
@@ -8,8 +8,8 @@ on:
   workflow_dispatch:
 
 jobs:
-  # Build moonlight-embedded-miyoo from source using the same toolchain as XK9274
-  build-moonlight:
+  # Build a minimal SDL2 test app using moonlight's prebuilt libraries
+  build-sdl-test:
     runs-on: ubuntu-22.04
 
     steps:
@@ -31,191 +31,253 @@ jobs:
       run: |
         sudo mkdir -p /opt
         sudo tar xf miyoomini-toolchain.tar.xz -C /opt
-        ls -la /opt/
+        ls -la /opt/miyoomini-toolchain/
 
-    - name: Install build dependencies
+    - name: Get moonlight prebuilt libraries
       run: |
-        sudo apt-get update
-        sudo apt-get install -y cmake ninja-build pkg-config
-
-    - name: Clone moonlight-embedded-miyoo
-      run: |
-        git clone --recursive https://github.com/XK9274/moonlight-embedded-miyoo.git
-        cd moonlight-embedded-miyoo
-        git submodule update --init --recursive
-        ls -la
-
-    - name: Fix toolchain file (remove hardcoded paths)
-      run: |
-        cd moonlight-embedded-miyoo
-        # The original toolchain has hardcoded paths like /root/workspace/ffmpegex and /mnt/SDCARD/App/ffmpeg
-        # Create a clean toolchain file that works on GitHub Actions
-        cat > armv7l-toolchain.cmake << 'TOOLCHAIN_EOF'
-        # Miyoo Mini Plus cross-compilation toolchain (cleaned for CI)
-        set(CMAKE_SYSTEM_NAME Linux)
-        set(CMAKE_SYSTEM_PROCESSOR armv7l)
-        set(CMAKE_SYSROOT "/opt/miyoomini-toolchain/arm-linux-gnueabihf/libc")
-        set(CMAKE_LINKER /opt/miyoomini-toolchain/bin/arm-linux-gnueabihf-ld)
-        set(CMAKE_INSTALL_RPATH "/opt/miyoomini-toolchain/arm-linux-gnueabihf/libc/lib")
-
-        # Compiler - use full path
-        set(CMAKE_C_COMPILER /opt/miyoomini-toolchain/bin/arm-linux-gnueabihf-gcc)
-
-        # Linker flags - only use paths that exist in the toolchain
-        set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -L/opt/miyoomini-toolchain/arm-linux-gnueabihf/libc/usr/lib/")
-        set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -L/opt/miyoomini-toolchain/arm-linux-gnueabihf/libc/usr/lib/")
-
-        # Include directories - only use paths that exist
-        set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -I/opt/miyoomini-toolchain/arm-linux-gnueabihf/libc/usr/include")
-
-        # Libraries
-        set(CURL_LIBRARY /opt/miyoomini-toolchain/arm-linux-gnueabihf/libc/usr/lib/libcurl.so)
-        set(CURL_INCLUDE_DIR /opt/miyoomini-toolchain/arm-linux-gnueabihf/libc/usr/include)
-
-        set(CMAKE_VERBOSE_MAKEFILE ON)
-        TOOLCHAIN_EOF
-        echo "=== Fixed toolchain file ==="
-        cat armv7l-toolchain.cmake
-
-    - name: Get prebuilt dependencies from moonlight-app-miyoo
-      run: |
-        # Download the full moonlight app package which has all prebuilt libs
-        # Note: tag is "release1.5.1" and file is "Moonlight_Miyoo_1.5.1.tar.gz"
+        # Download moonlight app package which has working prebuilt SDL2 libs
         wget -q https://github.com/XK9274/moonlight-app-miyoo/releases/download/release1.5.1/Moonlight_Miyoo_1.5.1.tar.gz
         tar xzf Moonlight_Miyoo_1.5.1.tar.gz
-        ls -la
-        # Find and list the lib directory
-        find . -type d -name lib | head -5
-        find . -name "*.so*" | head -20
 
-        # These are the prebuilt libraries that moonlight uses
-        # We'll use them for linking - adjust path based on actual structure
+        # Copy moonlight's libs to deps
         mkdir -p deps/lib deps/include
-        # Copy from wherever the libs are found
-        find . -name "*.so*" -exec cp {} deps/lib/ \; 2>/dev/null || true
+        cp moonlight/lib/*.so* deps/lib/
+
+        echo "=== Moonlight libraries ==="
         ls -la deps/lib/
 
-    - name: Set up cross-compile environment
+    - name: Get SDL2 headers
       run: |
-        export CROSS_PREFIX=/opt/miyoomini-toolchain/bin/arm-linux-gnueabihf-
-        export SYSROOT=/opt/miyoomini-toolchain/arm-linux-gnueabihf/sysroot
+        # Get SDL2 headers from the official SDL2 source
+        wget -q https://github.com/libsdl-org/SDL/releases/download/release-2.28.5/SDL2-2.28.5.tar.gz
+        tar xzf SDL2-2.28.5.tar.gz
+        cp -r SDL2-2.28.5/include/* deps/include/
 
-        echo "=== Toolchain info ==="
-        ${CROSS_PREFIX}gcc --version
+        echo "=== SDL2 headers ==="
+        ls -la deps/include/
 
-        # Set up pkg-config for cross-compilation
-        export PKG_CONFIG_PATH=$PWD/deps/lib/pkgconfig:/opt/miyoomini-toolchain/arm-linux-gnueabihf/sysroot/usr/lib/pkgconfig
-        export PKG_CONFIG_SYSROOT_DIR=$SYSROOT
-
-        echo "CROSS_PREFIX=${CROSS_PREFIX}" >> $GITHUB_ENV
-        echo "SYSROOT=${SYSROOT}" >> $GITHUB_ENV
-        echo "PKG_CONFIG_PATH=${PKG_CONFIG_PATH}" >> $GITHUB_ENV
-
-    - name: Build moonlight-embedded-miyoo
+    - name: Create minimal SDL2 test app
       run: |
-        # Add toolchain to PATH so CMake can find arm-linux-gnueabihf-gcc
+        mkdir -p sdl_test
+        cat > sdl_test/main.c << 'EOF'
+        /*
+         * Minimal SDL2 test for Miyoo Mini Plus
+         * Based on moonlight's working SDL2 setup
+         */
+        #include <SDL2/SDL.h>
+        #include <stdio.h>
+        #include <stdlib.h>
+
+        int main(int argc, char *argv[]) {
+            FILE *log = fopen("sdl_test.log", "w");
+            if (!log) log = stderr;
+
+            fprintf(log, "=== Minimal SDL2 Test ===\n");
+            fprintf(log, "Setting SDL_MMIYOO_DOUBLE_BUFFER before SDL_Init\n");
+            fflush(log);
+
+            // CRITICAL: Set double buffer flag BEFORE SDL_Init (like moonlight does)
+            SDL_setenv("SDL_MMIYOO_DOUBLE_BUFFER", "1", 1);
+
+            fprintf(log, "Calling SDL_Init(SDL_INIT_VIDEO)\n");
+            fflush(log);
+
+            if (SDL_Init(SDL_INIT_VIDEO) < 0) {
+                fprintf(log, "SDL_Init failed: %s\n", SDL_GetError());
+                fclose(log);
+                return 1;
+            }
+
+            fprintf(log, "SDL_Init succeeded\n");
+            fprintf(log, "Video driver: %s\n", SDL_GetCurrentVideoDriver());
+            fflush(log);
+
+            // Create window (640x480 for Miyoo)
+            SDL_Window *window = SDL_CreateWindow(
+                "SDL Test",
+                SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
+                640, 480,
+                SDL_WINDOW_SHOWN
+            );
+
+            if (!window) {
+                fprintf(log, "SDL_CreateWindow failed: %s\n", SDL_GetError());
+                SDL_Quit();
+                fclose(log);
+                return 1;
+            }
+
+            fprintf(log, "Window created\n");
+            fflush(log);
+
+            // Create renderer with ACCELERATED (required for MMIYOO driver)
+            SDL_Renderer *renderer = SDL_CreateRenderer(
+                window, -1,
+                SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC
+            );
+
+            if (!renderer) {
+                fprintf(log, "SDL_CreateRenderer failed: %s\n", SDL_GetError());
+                SDL_DestroyWindow(window);
+                SDL_Quit();
+                fclose(log);
+                return 1;
+            }
+
+            SDL_RendererInfo info;
+            SDL_GetRendererInfo(renderer, &info);
+            fprintf(log, "Renderer: %s, Flags: %u\n", info.name, info.flags);
+            fflush(log);
+
+            // Render loop - cycle through RED, GREEN, BLUE
+            int colors[3][3] = {
+                {255, 0, 0},    // RED
+                {0, 255, 0},    // GREEN
+                {0, 0, 255}     // BLUE
+            };
+
+            int frame = 0;
+            int total_frames = 180; // 3 seconds at 60fps
+
+            fprintf(log, "Starting render loop (%d frames)\n", total_frames);
+            fflush(log);
+
+            while (frame < total_frames) {
+                int color_idx = (frame / 60) % 3;  // Change color every second
+
+                SDL_SetRenderDrawColor(renderer,
+                    colors[color_idx][0],
+                    colors[color_idx][1],
+                    colors[color_idx][2],
+                    255);
+                SDL_RenderClear(renderer);
+                SDL_RenderPresent(renderer);
+
+                SDL_Delay(16);  // ~60fps
+                frame++;
+
+                // Log progress every 60 frames
+                if (frame % 60 == 0) {
+                    fprintf(log, "Frame %d, color: %s\n", frame,
+                        color_idx == 0 ? "RED" : (color_idx == 1 ? "GREEN" : "BLUE"));
+                    fflush(log);
+                }
+
+                // Handle events (check for quit)
+                SDL_Event event;
+                while (SDL_PollEvent(&event)) {
+                    if (event.type == SDL_QUIT) {
+                        frame = total_frames;  // Exit loop
+                    }
+                }
+            }
+
+            fprintf(log, "Render loop complete\n");
+            fprintf(log, "Cleaning up...\n");
+            fflush(log);
+
+            SDL_DestroyRenderer(renderer);
+            SDL_DestroyWindow(window);
+            SDL_Quit();
+
+            fprintf(log, "=== Test Complete ===\n");
+            fclose(log);
+
+            return 0;
+        }
+        EOF
+
+        echo "=== Created main.c ==="
+        cat sdl_test/main.c
+
+    - name: Compile SDL2 test
+      run: |
         export PATH="/opt/miyoomini-toolchain/bin:$PATH"
+        export CROSS_PREFIX="/opt/miyoomini-toolchain/bin/arm-linux-gnueabihf-"
 
-        cd moonlight-embedded-miyoo
+        echo "=== Compiling SDL2 test ==="
 
-        # Create build directory
-        mkdir -p build
-        cd build
+        # Compile with the same flags moonlight uses
+        ${CROSS_PREFIX}gcc \
+          -o sdl_test/sdl_test \
+          sdl_test/main.c \
+          -I deps/include \
+          -L deps/lib \
+          -Wl,-rpath,'$$ORIGIN/../lib' \
+          -lSDL2 \
+          -Os -marm -mtune=cortex-a7 -mfpu=neon-vfpv4 \
+          -march=armv7ve+simd -mfloat-abi=hard \
+          -ffunction-sections -fdata-sections \
+          -Wl,--gc-sections
 
-        # Configure with CMake using the cross-compilation toolchain
-        # Note: Moonlight's CMakeLists.txt has specific flags for Miyoo
-        cmake .. \
-          -DCMAKE_TOOLCHAIN_FILE=../armv7l-toolchain.cmake \
-          -DCMAKE_BUILD_TYPE=Release \
-          -DENABLE_X11=OFF \
-          -DENABLE_PULSE=OFF \
-          -DENABLE_CEC=OFF \
-          -DCMAKE_C_FLAGS="-Wno-undef -Os -marm -mtune=cortex-a7 -mfpu=neon-vfpv4 -march=armv7ve+simd -mfloat-abi=hard -ffunction-sections -fdata-sections -I/opt/miyoomini-toolchain/arm-linux-gnueabihf/sysroot/usr/include" \
-          -DCMAKE_EXE_LINKER_FLAGS="-L$PWD/../../deps/lib -L/opt/miyoomini-toolchain/arm-linux-gnueabihf/sysroot/usr/lib"
+        echo "=== Compile result ==="
+        file sdl_test/sdl_test
+        ${CROSS_PREFIX}readelf -d sdl_test/sdl_test | grep NEEDED || true
 
-        # Build
-        make -j$(nproc) VERBOSE=1 || {
-          echo "=== Build failed, showing details ==="
-          cat CMakeFiles/CMakeError.log || true
-          cat CMakeFiles/CMakeOutput.log || true
-          exit 1
-        }
-
-        echo "=== Build output ==="
-        ls -la
-        file moonlight || true
-
-    - name: Package moonlight clone
+    - name: Package SDL2 test
       run: |
-        mkdir -p release/moonlight-clone/bin
-        mkdir -p release/moonlight-clone/lib
+        mkdir -p release/sdl_test/lib
 
-        # Copy built binary
-        cp moonlight-embedded-miyoo/build/moonlight release/moonlight-clone/bin/ || {
-          echo "Moonlight binary not found, checking for alternative locations..."
-          find moonlight-embedded-miyoo -name "moonlight" -type f | head -5
-          exit 1
-        }
+        # Copy binary
+        cp sdl_test/sdl_test release/sdl_test/
 
-        # Copy libraries from moonlight app (these work on the device)
-        # Libraries were copied to deps/lib/ in the earlier step
-        cp deps/lib/*.so* release/moonlight-clone/lib/ || true
+        # Copy moonlight's SDL2 library (the key ingredient!)
+        cp deps/lib/libSDL2-2.0.so.0 release/sdl_test/lib/
 
-        # Create launch script (based on original moonlight launch.sh)
-        # Using printf to avoid YAML heredoc parsing issues
-        printf '%s\n' '#!/bin/sh' > release/moonlight-clone/launch.sh
-        printf '%s\n' 'export moonlightdir=/mnt/SDCARD/App/moonlight-clone' >> release/moonlight-clone/launch.sh
-        printf '%s\n' 'cd $moonlightdir' >> release/moonlight-clone/launch.sh
-        printf '%s\n' '' >> release/moonlight-clone/launch.sh
-        printf '%s\n' 'export PATH=$PATH:$PWD/bin' >> release/moonlight-clone/launch.sh
-        printf '%s\n' 'export HOME=$moonlightdir' >> release/moonlight-clone/launch.sh
-        printf '%s\n' 'export LD_LIBRARY_PATH=./lib:/lib:/config/lib:/mnt/SDCARD/miyoo/lib:/mnt/SDCARD/.tmp_update/lib:/mnt/SDCARD/.tmp_update/lib/parasyte' >> release/moonlight-clone/launch.sh
-        printf '%s\n' 'export SDL_VIDEODRIVER=mmiyoo' >> release/moonlight-clone/launch.sh
-        printf '%s\n' 'export SDL_AUDIODRIVER=mmiyoo' >> release/moonlight-clone/launch.sh
-        printf '%s\n' 'export EGL_VIDEODRIVER=mmiyoo' >> release/moonlight-clone/launch.sh
-        printf '%s\n' '' >> release/moonlight-clone/launch.sh
-        printf '%s\n' '# Kill audio servers like moonlight does' >> release/moonlight-clone/launch.sh
-        printf '%s\n' 'pkill -9 -f "audioserver" 2>/dev/null || true' >> release/moonlight-clone/launch.sh
-        printf '%s\n' 'killall -q "audioserver.mod" 2>/dev/null || true' >> release/moonlight-clone/launch.sh
-        printf '%s\n' '' >> release/moonlight-clone/launch.sh
-        printf '%s\n' 'echo "=== Moonlight Clone Launch ===" > moonlight-clone.log' >> release/moonlight-clone/launch.sh
-        printf '%s\n' 'echo "Date: $(date)" >> moonlight-clone.log' >> release/moonlight-clone/launch.sh
-        printf '%s\n' 'echo "LD_LIBRARY_PATH: $LD_LIBRARY_PATH" >> moonlight-clone.log' >> release/moonlight-clone/launch.sh
-        printf '%s\n' '' >> release/moonlight-clone/launch.sh
-        printf '%s\n' '# Run moonlight (menu mode for testing)' >> release/moonlight-clone/launch.sh
-        printf '%s\n' 'LD_PRELOAD="./lib/libuuid.so" ./bin/moonlight -help >> moonlight-clone.log 2>&1' >> release/moonlight-clone/launch.sh
-        printf '%s\n' 'echo "Exit code: $?" >> moonlight-clone.log' >> release/moonlight-clone/launch.sh
-        chmod +x release/moonlight-clone/launch.sh
+        # Create launch script
+        cat > release/sdl_test/launch.sh << 'LAUNCH_EOF'
+        #!/bin/sh
+        export SDL_VIDEODRIVER=mmiyoo
+        export SDL_AUDIODRIVER=mmiyoo
+        export EGL_VIDEODRIVER=mmiyoo
+
+        cd /mnt/SDCARD/App/sdl_test
+        export LD_LIBRARY_PATH=./lib:/lib:/config/lib:/mnt/SDCARD/miyoo/lib:/mnt/SDCARD/.tmp_update/lib:/mnt/SDCARD/.tmp_update/lib/parasyte
+
+        # Kill audio server like moonlight does
+        pkill -9 -f "audioserver" 2>/dev/null || true
+
+        echo "=== SDL Test Launch ===" > sdl_test.log
+        echo "Date: $(date)" >> sdl_test.log
+        echo "LD_LIBRARY_PATH: $LD_LIBRARY_PATH" >> sdl_test.log
+
+        # Run the test
+        ./sdl_test >> sdl_test.log 2>&1
+        echo "Exit code: $?" >> sdl_test.log
+        LAUNCH_EOF
+        chmod +x release/sdl_test/launch.sh
 
         # Create config.json for OnionOS
-        printf '%s\n' '{' > release/moonlight-clone/config.json
-        printf '%s\n' '  "label": "Moonlight Clone",' >> release/moonlight-clone/config.json
-        printf '%s\n' '  "icon": "icon.png",' >> release/moonlight-clone/config.json
-        printf '%s\n' '  "launch": "launch.sh",' >> release/moonlight-clone/config.json
-        printf '%s\n' '  "description": "Moonlight clone build test"' >> release/moonlight-clone/config.json
-        printf '%s\n' '}' >> release/moonlight-clone/config.json
+        cat > release/sdl_test/config.json << 'CONFIG_EOF'
+        {
+          "label": "SDL Test",
+          "icon": "icon.png",
+          "launch": "launch.sh",
+          "description": "Minimal SDL2 test using moonlight libs"
+        }
+        CONFIG_EOF
 
-        # Copy icon from original moonlight if available
-        # Try to find icon in the extracted moonlight package
-        find . -name "*.png" -path "*res*" -exec cp {} release/moonlight-clone/icon.png \; 2>/dev/null || \
-          echo "No icon found, will use default"
+        # Create a simple icon (1x1 red pixel PNG placeholder)
+        # We'll just copy any png we can find, or skip
+        find . -name "*.png" -exec cp {} release/sdl_test/icon.png \; 2>/dev/null || \
+          echo "No icon found"
 
-        ls -la release/moonlight-clone/
-        ls -la release/moonlight-clone/bin/
-        ls -la release/moonlight-clone/lib/
+        echo "=== Package contents ==="
+        ls -la release/sdl_test/
+        ls -la release/sdl_test/lib/
 
         cd release
-        zip -r moonlight-clone.zip moonlight-clone/
+        zip -r sdl_test.zip sdl_test/
 
-    - name: Upload moonlight clone artifact
+    - name: Upload SDL test artifact
       uses: actions/upload-artifact@v4
       with:
-        name: moonlight-clone-miyoo
-        path: release/moonlight-clone.zip
+        name: sdl-test-miyoo
+        path: release/sdl_test.zip
 
-  # Update v0.1.0 release with moonlight clone
+  # Update v0.1.0 release with SDL test
   update-release:
-    needs: build-moonlight
+    needs: build-sdl-test
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
     permissions:
@@ -227,17 +289,17 @@ jobs:
     - name: Download artifact
       uses: actions/download-artifact@v4
       with:
-        name: moonlight-clone-miyoo
+        name: sdl-test-miyoo
         path: artifacts
 
     - name: Update release
       run: |
         # Delete old asset if exists
-        gh release delete-asset v0.1.0 moonlight-clone.zip --yes || true
+        gh release delete-asset v0.1.0 sdl_test.zip --yes || true
 
         # Upload new asset
-        gh release upload v0.1.0 artifacts/moonlight-clone.zip --clobber
+        gh release upload v0.1.0 artifacts/sdl_test.zip --clobber
 
-        echo "Updated v0.1.0 release with moonlight clone"
+        echo "Updated v0.1.0 release with SDL test"
       env:
         GH_TOKEN: ${{ github.token }}
