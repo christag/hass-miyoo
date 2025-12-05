@@ -96,10 +96,16 @@ static int init_sdl(app_state_t *app) {
     // This MUST be done in C code, not shell script, for proper SDL initialization
     SDL_setenv("SDL_MMIYOO_DOUBLE_BUFFER", "1", 1);
 
-    // Initialize SDL (VIDEO + AUDIO)
-    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) < 0) {
-        fprintf(stderr, "SDL_Init failed: %s\n", SDL_GetError());
+    // Initialize SDL VIDEO first (required for MMIYOO driver)
+    if (SDL_Init(SDL_INIT_VIDEO) < 0) {
+        fprintf(stderr, "SDL_Init VIDEO failed: %s\n", SDL_GetError());
         return 0;
+    }
+
+    // Try to initialize audio separately (optional, may not be available)
+    if (SDL_InitSubSystem(SDL_INIT_AUDIO) < 0) {
+        fprintf(stderr, "Warning: Audio init failed: %s (continuing without audio)\n", SDL_GetError());
+        // Continue without audio - not a fatal error
     }
 
     // Initialize SDL_image (PNG support)
