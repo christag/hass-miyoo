@@ -236,6 +236,20 @@ jobs:
         # Install manually to avoid sample program issues
         cp -a .libs/libSDL2_ttf*.so* $DEPS/lib/
         cp SDL_ttf.h $DEPS/include/SDL2/
+        # Create pkg-config file for SDL2_ttf
+        cat > $DEPS/lib/pkgconfig/SDL2_ttf.pc << PKGCONFIG_EOF
+        prefix=$DEPS
+        exec_prefix=\${prefix}
+        libdir=\${exec_prefix}/lib
+        includedir=\${prefix}/include
+
+        Name: SDL2_ttf
+        Description: SDL2 TrueType Font library
+        Version: 2.20.2
+        Requires: sdl2, freetype2
+        Libs: -L\${libdir} -lSDL2_ttf
+        Cflags: -I\${includedir}/SDL2
+        PKGCONFIG_EOF
         ls -la $DEPS/lib/libSDL2_ttf*
         echo "Freetype and SDL2_ttf complete"
 
@@ -261,6 +275,20 @@ jobs:
         # Install manually to avoid sample program issues
         cp -a .libs/libSDL2_image*.so* $DEPS/lib/
         cp SDL_image.h $DEPS/include/SDL2/
+        # Create pkg-config file for SDL2_image
+        cat > $DEPS/lib/pkgconfig/SDL2_image.pc << PKGCONFIG_EOF
+        prefix=$DEPS
+        exec_prefix=\${prefix}
+        libdir=\${exec_prefix}/lib
+        includedir=\${prefix}/include
+
+        Name: SDL2_image
+        Description: SDL2 image loading library
+        Version: 2.6.3
+        Requires: sdl2
+        Libs: -L\${libdir} -lSDL2_image
+        Cflags: -I\${includedir}/SDL2
+        PKGCONFIG_EOF
         cd ..
 
         # OpenSSL (for HTTPS support in libcurl)
