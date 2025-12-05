@@ -48,14 +48,20 @@ jobs:
     - name: Get prebuilt dependencies from moonlight-app-miyoo
       run: |
         # Download the full moonlight app package which has all prebuilt libs
-        wget -q https://github.com/XK9274/moonlight-app-miyoo/releases/download/v1.5.1/moonlight.zip
-        unzip -q moonlight.zip
-        ls -la moonlight/lib/
+        # Note: tag is "release1.5.1" and file is "Moonlight_Miyoo_1.5.1.tar.gz"
+        wget -q https://github.com/XK9274/moonlight-app-miyoo/releases/download/release1.5.1/Moonlight_Miyoo_1.5.1.tar.gz
+        tar xzf Moonlight_Miyoo_1.5.1.tar.gz
+        ls -la
+        # Find and list the lib directory
+        find . -type d -name lib | head -5
+        find . -name "*.so*" | head -20
 
         # These are the prebuilt libraries that moonlight uses
-        # We'll use them for linking
+        # We'll use them for linking - adjust path based on actual structure
         mkdir -p deps/lib deps/include
-        cp moonlight/lib/*.so* deps/lib/ || true
+        # Copy from wherever the libs are found
+        find . -name "*.so*" -exec cp {} deps/lib/ \; 2>/dev/null || true
+        ls -la deps/lib/
 
     - name: Set up cross-compile environment
       run: |
@@ -117,7 +123,8 @@ jobs:
         }
 
         # Copy libraries from moonlight app (these work on the device)
-        cp moonlight/lib/*.so* release/moonlight-clone/lib/
+        # Libraries were copied to deps/lib/ in the earlier step
+        cp deps/lib/*.so* release/moonlight-clone/lib/ || true
 
         # Create launch script (based on original moonlight launch.sh)
         # Using printf to avoid YAML heredoc parsing issues
@@ -154,7 +161,8 @@ jobs:
         printf '%s\n' '}' >> release/moonlight-clone/config.json
 
         # Copy icon from original moonlight if available
-        cp moonlight/res/*.png release/moonlight-clone/icon.png 2>/dev/null || \
+        # Try to find icon in the extracted moonlight package
+        find . -name "*.png" -path "*res*" -exec cp {} release/moonlight-clone/icon.png \; 2>/dev/null || \
           echo "No icon found, will use default"
 
         ls -la release/moonlight-clone/
