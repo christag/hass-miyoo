@@ -211,23 +211,45 @@ jobs:
         # --sysroot: Use the toolchain's C library for ABI compatibility
         # --allow-shlib-undefined: SDL2 lib has many deps (EGL, GLES, etc) that
         # aren't available at link time but will be on device via LD_LIBRARY_PATH
-        ${CROSS_PREFIX}gcc \
-          --sysroot=$SYSROOT \
-          -o sdl_test/sdl_test \
-          sdl_test/main.c \
-          -I deps/include \
-          -L deps/lib \
-          -Wl,-rpath,'$$ORIGIN/../lib' \
-          -Wl,--allow-shlib-undefined \
-          -lSDL2 \
-          -Os -marm -mtune=cortex-a7 -mfpu=neon-vfpv4 \
-          -march=armv7ve+simd -mfloat-abi=hard \
-          -ffunction-sections -fdata-sections \
-          -Wl,--gc-sections
+        # Use CMake like moonlight does, to ensure exact same build process
+        cat > sdl_test/CMakeLists.txt << 'CMAKE_EOF'
+        cmake_minimum_required(VERSION 3.1)
+        project(sdl_test C)
+
+        set(CMAKE_C_STANDARD 99)
+        set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Os -marm -mtune=cortex-a7 -mfpu=neon-vfpv4 -march=armv7ve+simd -mfloat-abi=hard -ffunction-sections -fdata-sections")
+
+        add_executable(sdl_test main.c)
+        target_include_directories(sdl_test PRIVATE ${CMAKE_SOURCE_DIR}/../deps/include)
+        target_link_directories(sdl_test PRIVATE ${CMAKE_SOURCE_DIR}/../deps/lib)
+        target_link_libraries(sdl_test SDL2 m)
+        set_target_properties(sdl_test PROPERTIES LINK_FLAGS "-Wl,-rpath,'\$ORIGIN/../lib' -Wl,--allow-shlib-undefined -Wl,--gc-sections")
+        CMAKE_EOF
+
+        mkdir -p sdl_test/build
+        cd sdl_test/build
+
+        # Use moonlight's exact toolchain file approach
+        cat > toolchain.cmake << 'TOOLCHAIN_EOF'
+        set(CMAKE_SYSTEM_NAME Linux)
+        set(CMAKE_SYSTEM_PROCESSOR armv7l)
+        set(CMAKE_SYSROOT "/opt/miyoomini-toolchain/arm-linux-gnueabihf/libc")
+        set(CMAKE_C_COMPILER /opt/miyoomini-toolchain/bin/arm-linux-gnueabihf-gcc)
+        set(CMAKE_CXX_COMPILER /opt/miyoomini-toolchain/bin/arm-linux-gnueabihf-g++)
+        set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
+        set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
+        set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
+        TOOLCHAIN_EOF
+
+        cmake -DCMAKE_TOOLCHAIN_FILE=toolchain.cmake ..
+        make VERBOSE=1
+
+        cp sdl_test ../sdl_test
+        cd ../..
 
         echo "=== Compile result ==="
         file sdl_test/sdl_test
-        ${CROSS_PREFIX}readelf -d sdl_test/sdl_test | grep NEEDED || true
+        /opt/miyoomini-toolchain/bin/arm-linux-gnueabihf-readelf -d sdl_test/sdl_test | grep NEEDED || true
 
     - name: Package SDL2 test
       run: |
