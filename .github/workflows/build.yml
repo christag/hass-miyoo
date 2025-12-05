@@ -10,30 +10,33 @@ on:
 
 jobs:
   # Minimal test binary for debugging display issues
-  # Uses official Miyoo Mini toolchain for ABI compatibility
+  # Uses Ubuntu cross-compiler (glibc) with prebuilt SDL2+EGL+GLES from steward-fu/sdl2
   build-test-display:
-    runs-on: ubuntu-latest
-    container:
-      image: miyoocfw/toolchain:latest
+    runs-on: ubuntu-20.04
 
     steps:
     - uses: actions/checkout@v4
 
+    - name: Install ARM cross-compiler
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y gcc-arm-linux-gnueabihf
+
     - name: Get SDL2 prebuilt libraries with MMIYOO driver
       run: |
         set -ex
-        export PATH="/opt/miyoo/bin:$PATH"
         export DEPS=$GITHUB_WORKSPACE/deps
         mkdir -p $DEPS/lib $DEPS/include/SDL2
 
         # Show toolchain info
         echo "=== Toolchain Info ==="
-        arm-buildroot-linux-musleabi-gcc --version
+        arm-linux-gnueabihf-gcc --version
 
         # Clone steward-fu/sdl2 which has prebuilt libraries for Miyoo Mini
+        # These are glibc-based libraries that work with the Ubuntu cross-compiler
         git clone --depth 1 https://github.com/steward-fu/sdl2.git SDL2-mmiyoo
 
-        # Copy prebuilt libraries (already compiled for Miyoo Mini)
+        # Copy prebuilt libraries (already compiled for Miyoo Mini with glibc)
         cp SDL2-mmiyoo/prebuilt/mini/libSDL2-2.0.so.0 $DEPS/lib/
         cp SDL2-mmiyoo/prebuilt/mini/libEGL.so $DEPS/lib/
         cp SDL2-mmiyoo/prebuilt/mini/libGLESv2.so $DEPS/lib/
@@ -42,7 +45,6 @@ jobs:
         cp SDL2-mmiyoo/sdl2/include/*.h $DEPS/include/SDL2/
 
         # Create SDL_config.h from minimal config (needed for compilation)
-        # The minimal config works for cross-compilation scenarios
         cp $DEPS/include/SDL2/SDL_config_minimal.h $DEPS/include/SDL2/SDL_config.h
 
         # Create libSDL2.so symlink for linking
@@ -50,25 +52,23 @@ jobs:
         ln -sf libSDL2-2.0.so.0 libSDL2.so
 
         ls -la $DEPS/lib/
-        ls -la $DEPS/include/SDL2/SDL_config.h
         echo "SDL2 prebuilt libraries with MMIYOO driver ready"
 
-    - name: Build test_display with Miyoo toolchain
+    - name: Build test_display
       run: |
         set -ex
-        export PATH="/opt/miyoo/bin:$PATH"
-        export SYSROOT=/opt/miyoo/arm-buildroot-linux-musleabi/sysroot
         export DEPS=$GITHUB_WORKSPACE/deps
 
-        # Compile using our built SDL2 with MMIYOO driver
-        arm-buildroot-linux-musleabi-gcc \
+        # Compile using prebuilt SDL2 with MMIYOO driver
+        # Use -nostartfiles and dynamic linking to avoid glibc version issues
+        arm-linux-gnueabihf-gcc \
           -march=armv7-a -mtune=cortex-a7 -mfpu=neon-vfpv4 -mfloat-abi=hard \
-          --sysroot=$SYSROOT \
           -I$DEPS/include/SDL2 \
           -o test_display \
           src/test_display.c \
           -L$DEPS/lib \
           -Wl,-rpath,/mnt/SDCARD/App/test_display/lib \
+          -Wl,--allow-shlib-undefined \
           -lSDL2
 
         # Check binary
@@ -100,47 +100,34 @@ jobs:
         name: test-display-miyoo
         path: release/test_display.zip
 
-  # Main HACompanion build using official Miyoo Mini toolchain
-  # This ensures ABI compatibility with MMIYOO SDL2 driver
+  # Main HACompanion build using Ubuntu cross-compiler with glibc
+  # The prebuilt SDL2 libraries from steward-fu/sdl2 are glibc-based,
+  # so we must use a glibc-based cross-compiler for ABI compatibility
   build-miyoo-arm:
-    runs-on: ubuntu-latest
-    container:
-      image: miyoocfw/toolchain:latest
+    runs-on: ubuntu-20.04
 
     steps:
     - uses: actions/checkout@v4
 
-    - name: Setup toolchain environment
+    - name: Install ARM cross-compiler and tools
       run: |
-        set -ex
-        # Miyoo toolchain uses musl libc, not glibc!
-        export PATH="/opt/miyoo/bin:$PATH"
-        export CROSS_COMPILE=arm-buildroot-linux-musleabi-
-        export SYSROOT=/opt/miyoo/arm-buildroot-linux-musleabi/sysroot
+        sudo apt-get update
+        sudo apt-get install -y gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf cmake unzip
 
-        echo "=== Miyoo Toolchain Info ==="
-        arm-buildroot-linux-musleabi-gcc --version
-        echo "Sysroot: $SYSROOT"
-
-        # Check what's available in toolchain
-        echo "=== SDL2 in toolchain ==="
-        ls -la $SYSROOT/usr/lib/libSDL2* 2>/dev/null || echo "SDL2 libs location may differ"
-        ls -la $SYSROOT/usr/include/SDL2/ 2>/dev/null || echo "SDL2 headers may be elsewhere"
-
-        # Find SDL2
-        find /opt/miyoo -name "libSDL2*.so*" 2>/dev/null | head -5 || true
+        echo "=== Cross-compiler Info ==="
+        arm-linux-gnueabihf-gcc --version
 
     - name: Get SDL2 prebuilt libraries with MMIYOO driver
       run: |
         set -ex
-        export PATH="/opt/miyoo/bin:$PATH"
         export DEPS=$GITHUB_WORKSPACE/deps
         mkdir -p $DEPS/lib $DEPS/include/SDL2
 
         # Clone steward-fu/sdl2 which has prebuilt libraries for Miyoo Mini
+        # These are glibc-based libraries that work with Ubuntu cross-compiler
         git clone --depth 1 https://github.com/steward-fu/sdl2.git SDL2-mmiyoo
 
-        # Copy prebuilt libraries (already compiled for Miyoo Mini)
+        # Copy prebuilt libraries (already compiled for Miyoo Mini with glibc)
         cp SDL2-mmiyoo/prebuilt/mini/libSDL2-2.0.so.0 $DEPS/lib/
         cp SDL2-mmiyoo/prebuilt/mini/libEGL.so $DEPS/lib/
         cp SDL2-mmiyoo/prebuilt/mini/libGLESv2.so $DEPS/lib/
@@ -161,16 +148,14 @@ jobs:
     - name: Build cJSON and SQLite
       run: |
         set -ex
-        export PATH="/opt/miyoo/bin:$PATH"
-        export SYSROOT=/opt/miyoo/arm-buildroot-linux-musleabi/sysroot
         export DEPS=$GITHUB_WORKSPACE/deps
 
         # cJSON
         wget -q https://github.com/DaveGamble/cJSON/archive/refs/tags/v1.7.16.tar.gz
         tar xzf v1.7.16.tar.gz
         cd cJSON-1.7.16
-        arm-buildroot-linux-musleabi-gcc --sysroot=$SYSROOT -c cJSON.c -o cJSON.o -fPIC
-        arm-buildroot-linux-musleabi-ar rcs libcjson.a cJSON.o
+        arm-linux-gnueabihf-gcc -c cJSON.c -o cJSON.o -fPIC
+        arm-linux-gnueabihf-ar rcs libcjson.a cJSON.o
         cp libcjson.a $DEPS/lib/
         mkdir -p $DEPS/include/cjson
         cp cJSON.h $DEPS/include/cjson/
@@ -180,43 +165,38 @@ jobs:
         wget -q https://www.sqlite.org/2024/sqlite-amalgamation-3450000.zip
         unzip -q sqlite-amalgamation-3450000.zip
         cd sqlite-amalgamation-3450000
-        arm-buildroot-linux-musleabi-gcc --sysroot=$SYSROOT -c sqlite3.c -o sqlite3.o -DSQLITE_OMIT_LOAD_EXTENSION -fPIC
-        arm-buildroot-linux-musleabi-ar rcs libsqlite3.a sqlite3.o
+        arm-linux-gnueabihf-gcc -c sqlite3.c -o sqlite3.o -DSQLITE_OMIT_LOAD_EXTENSION -fPIC
+        arm-linux-gnueabihf-ar rcs libsqlite3.a sqlite3.o
         cp libsqlite3.a $DEPS/lib/
         cp sqlite3.h sqlite3ext.h $DEPS/include/
 
     - name: Build Freetype and SDL2_ttf
       run: |
         set -ex
-        export PATH="/opt/miyoo/bin:$PATH"
-        export SYSROOT=/opt/miyoo/arm-buildroot-linux-musleabi/sysroot
         export DEPS=$GITHUB_WORKSPACE/deps
 
         # Freetype
         wget -q --timeout=120 https://downloads.sourceforge.net/project/freetype/freetype2/2.13.2/freetype-2.13.2.tar.gz
         tar xzf freetype-2.13.2.tar.gz
         cd freetype-2.13.2
-        ./configure --host=arm-buildroot-linux-musleabi --prefix=$DEPS \
+        ./configure --host=arm-linux-gnueabihf --prefix=$DEPS \
           --enable-shared --disable-static \
-          --with-zlib=no --with-bzip2=no --with-png=no --with-harfbuzz=no \
-          CFLAGS="--sysroot=$SYSROOT" \
-          LDFLAGS="--sysroot=$SYSROOT"
+          --with-zlib=no --with-bzip2=no --with-png=no --with-harfbuzz=no
         make -j$(nproc)
         make install
         cd ..
 
-        # SDL2_ttf - link against our built SDL2
+        # SDL2_ttf - link against prebuilt SDL2
         wget -q https://github.com/libsdl-org/SDL_ttf/releases/download/release-2.20.2/SDL2_ttf-2.20.2.tar.gz
         tar xzf SDL2_ttf-2.20.2.tar.gz
         cd SDL2_ttf-2.20.2
         export PKG_CONFIG_PATH=$DEPS/lib/pkgconfig:$PKG_CONFIG_PATH
-        ./configure --host=arm-buildroot-linux-musleabi --prefix=$DEPS \
+        ./configure --host=arm-linux-gnueabihf --prefix=$DEPS \
           --enable-shared --disable-static \
           --disable-freetype-builtin \
           --disable-harfbuzz \
-          SDL2_CONFIG=$DEPS/bin/sdl2-config \
-          CFLAGS="--sysroot=$SYSROOT -I$DEPS/include/SDL2" \
-          LDFLAGS="--sysroot=$SYSROOT -L$DEPS/lib" \
+          CFLAGS="-I$DEPS/include/SDL2" \
+          LDFLAGS="-L$DEPS/lib" \
           FREETYPE_CFLAGS="-I$DEPS/include/freetype2" \
           FREETYPE_LIBS="-L$DEPS/lib -lfreetype"
         make -j$(nproc)
@@ -227,21 +207,18 @@ jobs:
     - name: Build SDL2_image, OpenSSL, and libcurl
       run: |
         set -ex
-        export PATH="/opt/miyoo/bin:$PATH"
-        export SYSROOT=/opt/miyoo/arm-buildroot-linux-musleabi/sysroot
         export DEPS=$GITHUB_WORKSPACE/deps
 
-        # SDL2_image - link against our built SDL2
+        # SDL2_image - link against prebuilt SDL2
         wget -q https://github.com/libsdl-org/SDL_image/releases/download/release-2.6.3/SDL2_image-2.6.3.tar.gz
         tar xzf SDL2_image-2.6.3.tar.gz
         cd SDL2_image-2.6.3
         export PKG_CONFIG_PATH=$DEPS/lib/pkgconfig:$PKG_CONFIG_PATH
-        ./configure --host=arm-buildroot-linux-musleabi --prefix=$DEPS \
+        ./configure --host=arm-linux-gnueabihf --prefix=$DEPS \
           --enable-shared --disable-static \
           --disable-jpg --disable-png-shared --disable-webp --disable-tif \
-          SDL2_CONFIG=$DEPS/bin/sdl2-config \
-          CFLAGS="--sysroot=$SYSROOT -I$DEPS/include/SDL2" \
-          LDFLAGS="--sysroot=$SYSROOT -L$DEPS/lib"
+          CFLAGS="-I$DEPS/include/SDL2" \
+          LDFLAGS="-L$DEPS/lib"
         make -j$(nproc)
         make install
         cd ..
@@ -253,7 +230,7 @@ jobs:
         ./Configure linux-armv4 --prefix=$DEPS \
           --openssldir=$DEPS/ssl \
           no-shared no-tests \
-          --cross-compile-prefix=arm-buildroot-linux-musleabi-
+          --cross-compile-prefix=arm-linux-gnueabihf-
         make -j$(nproc)
         make install_sw
         cd ..
@@ -262,7 +239,7 @@ jobs:
         wget -q https://curl.se/download/curl-8.5.0.tar.gz
         tar xzf curl-8.5.0.tar.gz
         cd curl-8.5.0
-        ./configure --host=arm-buildroot-linux-musleabi --prefix=$DEPS \
+        ./configure --host=arm-linux-gnueabihf --prefix=$DEPS \
           --disable-shared --enable-static \
           --with-openssl=$DEPS \
           --without-zlib --without-brotli --without-zstd \
@@ -270,8 +247,7 @@ jobs:
           --disable-ldap --disable-dict --disable-telnet --disable-tftp \
           --disable-pop3 --disable-imap --disable-smtp --disable-gopher \
           --disable-rtsp --disable-smb \
-          CFLAGS="--sysroot=$SYSROOT" \
-          LDFLAGS="--sysroot=$SYSROOT -L$DEPS/lib" \
+          LDFLAGS="-L$DEPS/lib" \
           CPPFLAGS="-I$DEPS/include"
         make -j$(nproc)
         make install
@@ -282,24 +258,20 @@ jobs:
     - name: Build hacompanion for Miyoo ARM
       run: |
         set -ex
-        export PATH="/opt/miyoo/bin:$PATH"
-        export SYSROOT=/opt/miyoo/arm-buildroot-linux-musleabi/sysroot
         export DEPS=$GITHUB_WORKSPACE/deps
 
         mkdir -p build-arm
         cd build-arm
 
-        export PKG_CONFIG_PATH=$DEPS/lib/pkgconfig:$SYSROOT/usr/lib/pkgconfig
-        export PKG_CONFIG_LIBDIR=$PKG_CONFIG_PATH
+        export PKG_CONFIG_PATH=$DEPS/lib/pkgconfig
 
-        # Build with Miyoo toolchain - proper ABI for MMIYOO SDL2 driver
-        cmake -DCMAKE_C_COMPILER=arm-buildroot-linux-musleabi-gcc \
-              -DCMAKE_CXX_COMPILER=arm-buildroot-linux-musleabi-g++ \
-              -DCMAKE_SYSROOT=$SYSROOT \
-              -DCMAKE_FIND_ROOT_PATH="$DEPS;$SYSROOT/usr" \
-              -DCMAKE_PREFIX_PATH="$DEPS;$SYSROOT/usr" \
-              -DCMAKE_C_FLAGS="-march=armv7-a -mtune=cortex-a7 -mfpu=neon-vfpv4 -mfloat-abi=hard --sysroot=$SYSROOT -I$DEPS/include -I$DEPS/include/SDL2 -I$SYSROOT/usr/include" \
-              -DCMAKE_EXE_LINKER_FLAGS="--sysroot=$SYSROOT -L$DEPS/lib -L$SYSROOT/usr/lib -Wl,-rpath,/mnt/SDCARD/App/HACompanion/lib" \
+        # Build with Ubuntu glibc cross-compiler (matches prebuilt SDL2 libraries)
+        cmake -DCMAKE_C_COMPILER=arm-linux-gnueabihf-gcc \
+              -DCMAKE_CXX_COMPILER=arm-linux-gnueabihf-g++ \
+              -DCMAKE_FIND_ROOT_PATH="$DEPS" \
+              -DCMAKE_PREFIX_PATH="$DEPS" \
+              -DCMAKE_C_FLAGS="-march=armv7-a -mtune=cortex-a7 -mfpu=neon-vfpv4 -mfloat-abi=hard -I$DEPS/include -I$DEPS/include/SDL2" \
+              -DCMAKE_EXE_LINKER_FLAGS="-L$DEPS/lib -Wl,-rpath,/mnt/SDCARD/App/HACompanion/lib -Wl,--allow-shlib-undefined" \
               -DCMAKE_BUILD_TYPE=Release \
               ..
         make -j$(nproc) VERBOSE=1
@@ -311,7 +283,6 @@ jobs:
     - name: Create Miyoo package
       run: |
         set -ex
-        export SYSROOT=/opt/miyoo/arm-buildroot-linux-musleabi/sysroot
         export DEPS=$GITHUB_WORKSPACE/deps
 
         mkdir -p release/HACompanion/lib

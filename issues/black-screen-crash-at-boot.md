@@ -372,36 +372,33 @@ cat /dev/urandom > /dev/fb0  # Shows static on screen
 
 - **Status**: SOLUTION IDENTIFIED - Switching to mmiyoo toolchain in Attempt 17
 
-### Attempt 17: Use Official Miyoo CFW Toolchain (TESTING)
+### Attempt 17: Use Prebuilt SDL2 from steward-fu/sdl2 (TESTING)
 - **Date**: 2025-12-04
-- **Root Cause (Confirmed)**: ABI mismatch between Ubuntu cross-compiler and Miyoo's MMIYOO SDL2 library
-  - Ubuntu's `arm-linux-gnueabihf-gcc` (GCC 9.4.0) produces binaries incompatible with the MMIYOO SDL2 driver
-  - Moonlight uses the official buildroot toolchain (GCC 8.3.0, ARM A-profile)
-  - Different GLIBC requirements: Moonlight needs 2.4-2.7, our binary needs 2.28
-- **Solution**: Switch GitHub Actions to use `miyoocfw/toolchain` Docker image
-  - This is the official Miyoo Mini Plus buildroot toolchain
-  - Contains GCC 8.3.0 matching what Moonlight was compiled with
-  - Has pre-built SDL2 with working MMIYOO video/render drivers in sysroot
-  - Proper ABI compatibility with runtime libraries
-- **Changes Made to `.github/workflows/build.yml`**:
-  1. Changed `build-test-display` job from `ubuntu:20.04` to `miyoocfw/toolchain:latest`
-  2. Changed `build-miyoo-arm` job from `ubuntu:20.04` to `miyoocfw/toolchain:latest`
-  3. Updated all compiler paths to use `/opt/miyoo/bin/arm-linux-gnueabihf-gcc`
-  4. Updated sysroot to `/opt/miyoo/arm-linux-gnueabihf/libc`
-  5. Added proper `--sysroot` flags to all compilation
-  6. Bundle toolchain's SDL2 library (with working MMIYOO driver) in release packages
-- **Expected Results**:
-  - Binary compiled with same toolchain as working Moonlight app
-  - Proper ABI compatibility with MMIYOO SDL2 driver
-  - Lower GLIBC requirements (2.4-2.7 instead of 2.28)
-  - **Display should actually work!**
+- **Root Cause Analysis**:
+  - Initial theory was ABI mismatch between Ubuntu cross-compiler and Miyoo's SDL2
+  - Discovered `miyoocfw/toolchain` uses **musl libc** (not glibc!)
+  - Prebuilt SDL2 libraries from `steward-fu/sdl2/prebuilt/mini/` are **glibc-based**
+  - Trying to link musl-compiled code with glibc libraries causes `undefined reference to 'memset@GLIBC_2.4'` etc.
+- **Key Discovery**: The prebuilt SDL2+EGL+GLES libraries in `steward-fu/sdl2` are glibc-based:
+  ```
+  libSDL2-2.0.so.0  (5.7MB) - has MMIYOO driver, glibc-based
+  libEGL.so          (55KB) - glibc-based
+  libGLESv2.so     (21.7MB) - glibc-based
+  ```
+  These are the SAME libraries that Moonlight uses and they WORK on Miyoo hardware.
+- **Solution**: Use Ubuntu's glibc-based cross-compiler (`arm-linux-gnueabihf-gcc`) with prebuilt glibc-based SDL2 libraries
+  - Both compiler and libraries use glibc = ABI compatible
+  - At runtime on Miyoo, device has glibc so everything works together
 - **Build Errors Fixed**:
-  1. **Wrong compiler prefix**: Changed from `arm-linux-gnueabihf-` to `arm-buildroot-linux-musleabi-` (miyoocfw/toolchain uses musl, not glibc)
-  2. **Wrong sysroot**: Changed from `/opt/miyoo/arm-linux-gnueabihf/libc` to `/opt/miyoo/arm-buildroot-linux-musleabi/sysroot`
-  3. **SDL2 not in toolchain**: The miyoocfw/toolchain only has SDL 1.2, not SDL2
-  4. **Wrong SDL2 repo**: Initially tried `steward-fu/SDL` (SDL 1.2 repo) instead of `steward-fu/sdl2` (SDL2 with MMIYOO driver)
-- **Final Solution**: Build SDL2 from `steward-fu/sdl2` repo (master branch) which contains the MMIYOO video driver
-- **Status**: BUILD IN PROGRESS - Fixed SDL2 repo, pushing new build
+  1. **Wrong compiler prefix**: Initially tried `arm-buildroot-linux-musleabi-` (musl) - WRONG
+  2. **Musl/glibc incompatibility**: Prebuilt SDL2 uses glibc, so musl compiler fails with GLIBC_2.4 errors
+  3. **Missing SDL_config.h**: Created from SDL_config_minimal.h
+  4. **Wrong SDL2 repo**: Initially tried `steward-fu/SDL` (SDL 1.2) instead of `steward-fu/sdl2` (SDL2)
+- **Final Configuration**:
+  - `build-test-display` job: Ubuntu 20.04 + `arm-linux-gnueabihf-gcc` + prebuilt SDL2/EGL/GLES
+  - `build-miyoo-arm` job: Ubuntu 20.04 + `arm-linux-gnueabihf-gcc` + prebuilt SDL2/EGL/GLES
+  - All dependencies (freetype, SDL2_ttf, SDL2_image, curl, etc.) compiled with same glibc cross-compiler
+- **Status**: BUILD IN PROGRESS - Switched both jobs to Ubuntu glibc cross-compiler
 
 ## Next Steps to Try
 
