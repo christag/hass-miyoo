@@ -41,11 +41,16 @@ jobs:
         # Copy SDL2 headers
         cp SDL2-mmiyoo/sdl2/include/*.h $DEPS/include/SDL2/
 
+        # Create SDL_config.h from minimal config (needed for compilation)
+        # The minimal config works for cross-compilation scenarios
+        cp $DEPS/include/SDL2/SDL_config_minimal.h $DEPS/include/SDL2/SDL_config.h
+
         # Create libSDL2.so symlink for linking
         cd $DEPS/lib
         ln -sf libSDL2-2.0.so.0 libSDL2.so
 
         ls -la $DEPS/lib/
+        ls -la $DEPS/include/SDL2/SDL_config.h
         echo "SDL2 prebuilt libraries with MMIYOO driver ready"
 
     - name: Build test_display with Miyoo toolchain
@@ -142,6 +147,9 @@ jobs:
 
         # Copy SDL2 headers
         cp SDL2-mmiyoo/sdl2/include/*.h $DEPS/include/SDL2/
+
+        # Create SDL_config.h from minimal config (needed for compilation)
+        cp $DEPS/include/SDL2/SDL_config_minimal.h $DEPS/include/SDL2/SDL_config.h
 
         # Create libSDL2.so symlink for linking
         cd $DEPS/lib
