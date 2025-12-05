@@ -372,72 +372,76 @@ jobs:
         ls -la release/HACompanion/lib/
 
         # Create launch script
-        cat > release/HACompanion/launch.sh << 'EOF'
-#!/bin/sh
-# Home Assistant Companion launcher for Miyoo Mini Plus / OnionOS
+        cat > release/HACompanion/launch.sh << 'LAUNCHEOF'
+        #!/bin/sh
+        # Home Assistant Companion launcher for Miyoo Mini Plus / OnionOS
 
-cd /mnt/SDCARD/App/HACompanion
-export HOME=/mnt/SDCARD/App/HACompanion
+        cd /mnt/SDCARD/App/HACompanion
+        export HOME=/mnt/SDCARD/App/HACompanion
 
-# Set all video/audio drivers to mmiyoo
-export SDL_VIDEODRIVER=mmiyoo
-export SDL_AUDIODRIVER=mmiyoo
-export EGL_VIDEODRIVER=mmiyoo
+        # Set all video/audio drivers to mmiyoo
+        export SDL_VIDEODRIVER=mmiyoo
+        export SDL_AUDIODRIVER=mmiyoo
+        export EGL_VIDEODRIVER=mmiyoo
 
-# Use our bundled libraries first, then system libraries
-export LD_LIBRARY_PATH="./lib:/mnt/SDCARD/miyoo/lib:/mnt/SDCARD/.tmp_update/lib:/mnt/SDCARD/.tmp_update/lib/parasyte:$LD_LIBRARY_PATH"
+        # Use our bundled libraries first, then system libraries
+        export LD_LIBRARY_PATH="./lib:/mnt/SDCARD/miyoo/lib:/mnt/SDCARD/.tmp_update/lib:/mnt/SDCARD/.tmp_update/lib/parasyte:$LD_LIBRARY_PATH"
 
-# Run the application
-./hacompanion 2>&1 | tee debug.log
-EOF
+        # Run the application
+        ./hacompanion 2>&1 | tee debug.log
+        LAUNCHEOF
+        sed -i 's/^        //' release/HACompanion/launch.sh
         chmod +x release/HACompanion/launch.sh
 
         # Create debug launch script
-        cat > release/HACompanion/launch_debug.sh << 'EOF'
-#!/bin/sh
-cd /mnt/SDCARD/App/HACompanion
-echo "=== HACompanion Debug Launch ===" | tee debug.log
-echo "Date: $(date)" | tee -a debug.log
+        cat > release/HACompanion/launch_debug.sh << 'DEBUGEOF'
+        #!/bin/sh
+        cd /mnt/SDCARD/App/HACompanion
+        echo "=== HACompanion Debug Launch ===" | tee debug.log
+        echo "Date: $(date)" | tee -a debug.log
 
-export HOME=/mnt/SDCARD/App/HACompanion
-export SDL_VIDEODRIVER=mmiyoo
-export SDL_AUDIODRIVER=mmiyoo
-export EGL_VIDEODRIVER=mmiyoo
-export LD_LIBRARY_PATH="./lib:/mnt/SDCARD/miyoo/lib:/mnt/SDCARD/.tmp_update/lib:/mnt/SDCARD/.tmp_update/lib/parasyte:$LD_LIBRARY_PATH"
+        export HOME=/mnt/SDCARD/App/HACompanion
+        export SDL_VIDEODRIVER=mmiyoo
+        export SDL_AUDIODRIVER=mmiyoo
+        export EGL_VIDEODRIVER=mmiyoo
+        export LD_LIBRARY_PATH="./lib:/mnt/SDCARD/miyoo/lib:/mnt/SDCARD/.tmp_update/lib:/mnt/SDCARD/.tmp_update/lib/parasyte:$LD_LIBRARY_PATH"
 
-echo "LD_LIBRARY_PATH: $LD_LIBRARY_PATH" | tee -a debug.log
-echo "Starting app..." | tee -a debug.log
-./hacompanion 2>&1 | tee -a debug.log
-echo "Exit code: $?" | tee -a debug.log
-EOF
+        echo "LD_LIBRARY_PATH: $LD_LIBRARY_PATH" | tee -a debug.log
+        echo "Starting app..." | tee -a debug.log
+        ./hacompanion 2>&1 | tee -a debug.log
+        echo "Exit code: $?" | tee -a debug.log
+        DEBUGEOF
+        sed -i 's/^        //' release/HACompanion/launch_debug.sh
         chmod +x release/HACompanion/launch_debug.sh
 
         # Create config.json for OnionOS
-        cat > release/HACompanion/config.json << 'EOF'
-{
-  "label": "HA Companion",
-  "icon": "icon.png",
-  "launch": "launch.sh",
-  "description": "Home Assistant Companion"
-}
-EOF
+        cat > release/HACompanion/config.json << 'CONFIGEOF'
+        {
+          "label": "HA Companion",
+          "icon": "icon.png",
+          "launch": "launch.sh",
+          "description": "Home Assistant Companion"
+        }
+        CONFIGEOF
+        sed -i 's/^        //' release/HACompanion/config.json
 
         # Create sample servers.json
-        cat > release/HACompanion/servers.json.example << 'EOF'
-{
-  "servers": [
-    {
-      "name": "Home",
-      "url": "http://homeassistant.local",
-      "port": 8123,
-      "token": "YOUR_LONG_LIVED_ACCESS_TOKEN_HERE",
-      "username": "admin",
-      "insecure": 1
-    }
-  ],
-  "default_server": 0
-}
-EOF
+        cat > release/HACompanion/servers.json.example << 'SERVERSEOF'
+        {
+          "servers": [
+            {
+              "name": "Home",
+              "url": "http://homeassistant.local",
+              "port": 8123,
+              "token": "YOUR_LONG_LIVED_ACCESS_TOKEN_HERE",
+              "username": "admin",
+              "insecure": 1
+            }
+          ],
+          "default_server": 0
+        }
+        SERVERSEOF
+        sed -i 's/^        //' release/HACompanion/servers.json.example
 
         cd release
         zip -r HACompanion-miyoo.zip HACompanion/
