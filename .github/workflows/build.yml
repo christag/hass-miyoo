@@ -12,7 +12,7 @@ jobs:
   # Minimal test binary for debugging display issues
   # Uses Ubuntu cross-compiler (glibc) with prebuilt SDL2+EGL+GLES from steward-fu/sdl2
   build-test-display:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
 
     steps:
     - uses: actions/checkout@v4
@@ -104,7 +104,7 @@ jobs:
   # The prebuilt SDL2 libraries from steward-fu/sdl2 are glibc-based,
   # so we must use a glibc-based cross-compiler for ABI compatibility
   build-miyoo-arm:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
 
     steps:
     - uses: actions/checkout@v4
