@@ -9,124 +9,98 @@ on:
   workflow_dispatch:
 
 jobs:
-  # Build the Miyoo toolchain Docker image (shared by other jobs)
-  # This builds shauninman/union-miyoomini-toolchain from source
-  build-toolchain:
+  # Download and cache the prebuilt Miyoo toolchain (shared by other jobs)
+  # Uses shauninman's prebuilt toolchain from miyoomini-toolchain-buildroot
+  setup-toolchain:
     runs-on: ubuntu-22.04
-    outputs:
-      image-tag: ${{ steps.build.outputs.image-tag }}
 
     steps:
-    - name: Clone and build Miyoo toolchain Docker image
-      id: build
+    - name: Cache toolchain
+      id: cache-toolchain
+      uses: actions/cache@v4
+      with:
+        path: miyoomini-toolchain.tar.xz
+        key: miyoo-toolchain-v0.0.3
+
+    - name: Download prebuilt Miyoo toolchain
+      if: steps.cache-toolchain.outputs.cache-hit != 'true'
       run: |
         set -ex
+        # Download the prebuilt toolchain from shauninman's buildroot releases
+        wget -q https://github.com/shauninman/miyoomini-toolchain-buildroot/releases/download/v0.0.3/miyoomini-toolchain.tar.xz
 
-        # Clone the union-miyoomini-toolchain repo
-        git clone --depth 1 https://github.com/MiyooMini/union-toolchain.git
-
-        # Build the Docker image
-        cd union-toolchain
-        docker build -t miyoo-toolchain:local .
-
-        # Save the image to a tar file for other jobs
-        docker save miyoo-toolchain:local | gzip > ../miyoo-toolchain.tar.gz
-
-        echo "image-tag=miyoo-toolchain:local" >> $GITHUB_OUTPUT
-
-    - name: Upload toolchain image
+    - name: Upload toolchain artifact
       uses: actions/upload-artifact@v4
       with:
-        name: miyoo-toolchain-image
-        path: miyoo-toolchain.tar.gz
+        name: miyoo-toolchain
+        path: miyoomini-toolchain.tar.xz
         retention-days: 1
 
   # Minimal test binary for debugging display issues
   # Uses the Miyoo toolchain for proper ABI compatibility
   build-test-display:
     runs-on: ubuntu-22.04
-    needs: build-toolchain
+    needs: setup-toolchain
 
     steps:
     - uses: actions/checkout@v4
 
-    - name: Download toolchain image
+    - name: Download toolchain
       uses: actions/download-artifact@v4
       with:
-        name: miyoo-toolchain-image
+        name: miyoo-toolchain
 
-    - name: Load toolchain image
+    - name: Extract toolchain
       run: |
-        gunzip -c miyoo-toolchain.tar.gz | docker load
+        set -ex
+        sudo mkdir -p /opt
+        sudo tar xf miyoomini-toolchain.tar.xz -C /opt
+        ls -la /opt/
 
-    - name: Build test_display using Miyoo toolchain Docker
+    - name: Build test_display using Miyoo toolchain
       run: |
         set -ex
 
-        # Use the locally built Miyoo toolchain
-        # SDL2 is compiled in the sysroot with proper MMIYOO driver
-        docker run --rm -v $PWD:/root/workspace miyoo-toolchain:local /bin/bash -c '
-          set -ex
-          cd /root/workspace
+        # Set up toolchain paths
+        export CROSS_PREFIX=/opt/miyoomini-toolchain/bin/arm-linux-gnueabihf-
+        export SYSROOT=/opt/miyoomini-toolchain/arm-linux-gnueabihf/sysroot
 
-          # The toolchain sets up CROSS_COMPILE and PATH via .bashrc
-          # Toolchain is at /opt/miyoomini-toolchain
-          export CROSS_PREFIX=/opt/miyoomini-toolchain/bin/arm-linux-gnueabihf-
-          export SYSROOT=/opt/miyoomini-toolchain/arm-linux-gnueabihf/libc
+        echo "=== Toolchain Info ==="
+        ${CROSS_PREFIX}gcc --version
 
-          echo "=== Toolchain Info ==="
-          ${CROSS_PREFIX}gcc --version || echo "Checking alternate path..."
+        # Find SDL2 in sysroot
+        echo "=== Finding SDL2 ==="
+        find /opt/miyoomini-toolchain -name "libSDL2*" 2>/dev/null | head -10 || echo "SDL2 not found"
+        find /opt/miyoomini-toolchain -name "SDL.h" 2>/dev/null | head -5 || echo "SDL.h not found"
 
-          # Find the actual toolchain location
-          echo "=== Finding toolchain ==="
-          find /opt -name "arm-linux-gnueabihf-gcc" 2>/dev/null || true
-          ls -la /opt/ || true
+        # Set SDL2 paths
+        SDL2_LIB=$(find /opt/miyoomini-toolchain -name "libSDL2*.so*" -type f 2>/dev/null | head -1)
+        SDL_LIBDIR=$(dirname "$SDL2_LIB")
+        SDL_H=$(find /opt/miyoomini-toolchain -name "SDL.h" 2>/dev/null | head -1)
+        SDL_INCLUDE=$(dirname "$SDL_H")
 
-          # Find SDL2 in sysroot
-          echo "=== Finding SDL2 ==="
-          find /opt -name "libSDL2*" 2>/dev/null | head -10 || echo "SDL2 not found"
-          find /opt -name "SDL.h" 2>/dev/null | head -5 || echo "SDL.h not found"
+        echo "SDL_LIBDIR: $SDL_LIBDIR"
+        echo "SDL_INCLUDE: $SDL_INCLUDE"
 
-          # Set correct paths based on what we find
-          GCC_PATH=$(find /opt -name "arm-linux-gnueabihf-gcc" -type f 2>/dev/null | head -1)
-          if [ -n "$GCC_PATH" ]; then
-            export CROSS_PREFIX=$(dirname $GCC_PATH)/arm-linux-gnueabihf-
-          fi
+        # Compile test_display using toolchain SDL2
+        ${CROSS_PREFIX}gcc \
+          -march=armv7-a -mtune=cortex-a7 -mfpu=neon-vfpv4 -mfloat-abi=hard \
+          -I$SDL_INCLUDE \
+          -o test_display \
+          src/test_display.c \
+          -L$SDL_LIBDIR \
+          -Wl,-rpath,/mnt/SDCARD/App/test_display/lib \
+          -lSDL2
 
-          SDL2_LIB=$(find /opt -name "libSDL2*.so*" -type f 2>/dev/null | head -1)
-          if [ -n "$SDL2_LIB" ]; then
-            export SDL_LIBDIR=$(dirname $SDL2_LIB)
-          fi
+        echo "=== Binary info ==="
+        ls -la test_display
+        file test_display
 
-          SDL_H=$(find /opt -name "SDL.h" 2>/dev/null | head -1)
-          if [ -n "$SDL_H" ]; then
-            export SDL_INCLUDE=$(dirname $SDL_H)
-          fi
+        # Check what libraries the binary needs
+        ${CROSS_PREFIX}readelf -d test_display | grep NEEDED || true
 
-          echo "CROSS_PREFIX: $CROSS_PREFIX"
-          echo "SDL_LIBDIR: $SDL_LIBDIR"
-          echo "SDL_INCLUDE: $SDL_INCLUDE"
-
-          # Compile test_display using toolchain SDL2
-          ${CROSS_PREFIX}gcc \
-            -march=armv7-a -mtune=cortex-a7 -mfpu=neon-vfpv4 -mfloat-abi=hard \
-            -I$SDL_INCLUDE \
-            -o test_display \
-            src/test_display.c \
-            -L$SDL_LIBDIR \
-            -Wl,-rpath,/mnt/SDCARD/App/test_display/lib \
-            -lSDL2
-
-          echo "=== Binary info ==="
-          ls -la test_display
-          file test_display
-
-          # Check what libraries the binary needs
-          ${CROSS_PREFIX}readelf -d test_display | grep NEEDED || true
-
-          # Save SDL2 library path for packaging
-          echo "$SDL_LIBDIR" > SDL2_LIB_PATH.txt
-        '
+        # Save SDL2 library path for packaging
+        echo "$SDL_LIBDIR" > SDL2_LIB_PATH.txt
 
     - name: Create test package
       run: |
@@ -137,27 +111,20 @@ jobs:
         cp dist/test_display/launch.sh release/test_display/
         chmod +x release/test_display/launch.sh release/test_display/test_display
 
-        # Extract SDL2 library from the toolchain sysroot
+        # Copy SDL2 library from toolchain
         SDL_LIBDIR=$(cat SDL2_LIB_PATH.txt)
-        docker run --rm -v $PWD:/root/workspace miyoo-toolchain:local /bin/bash -c "
-          set -ex
-          SDL_LIBDIR=$SDL_LIBDIR
+        if [ -d "$SDL_LIBDIR" ]; then
+          cp -L $SDL_LIBDIR/libSDL2*.so* release/test_display/lib/ 2>/dev/null || true
+        fi
 
-          # Copy SDL2 library
-          if [ -d \"\$SDL_LIBDIR\" ]; then
-            cp -L \$SDL_LIBDIR/libSDL2*.so* /root/workspace/release/test_display/lib/ 2>/dev/null || true
-          fi
+        # Rename to expected name if needed
+        cd release/test_display/lib/
+        if [ -f libSDL2.so ] && [ ! -f libSDL2-2.0.so.0 ]; then
+          cp libSDL2.so libSDL2-2.0.so.0 2>/dev/null || true
+        fi
+        ls -la
 
-          # Rename to expected name
-          cd /root/workspace/release/test_display/lib/
-          if [ -f libSDL2.so ]; then
-            mv libSDL2.so libSDL2-2.0.so.0 2>/dev/null || true
-          fi
-
-          ls -la /root/workspace/release/test_display/lib/
-        "
-
-        cd release
+        cd ../..
         zip -r test_display.zip test_display/
 
     - name: Upload test_display artifact
@@ -166,230 +133,210 @@ jobs:
         name: test-display-miyoo
         path: release/test_display.zip
 
-  # Main HACompanion build using Miyoo toolchain Docker image
+  # Main HACompanion build using prebuilt Miyoo toolchain
   # This toolchain has SDL2 built into the sysroot, ensuring binary and library match
   # Critical for avoiding the ABI mismatch that caused the black screen issue
   build-miyoo-arm:
     runs-on: ubuntu-22.04
-    needs: build-toolchain
+    needs: setup-toolchain
 
     steps:
     - uses: actions/checkout@v4
 
-    - name: Download toolchain image
+    - name: Download toolchain
       uses: actions/download-artifact@v4
       with:
-        name: miyoo-toolchain-image
+        name: miyoo-toolchain
 
-    - name: Load toolchain image
+    - name: Extract toolchain
       run: |
-        gunzip -c miyoo-toolchain.tar.gz | docker load
+        set -ex
+        sudo mkdir -p /opt
+        sudo tar xf miyoomini-toolchain.tar.xz -C /opt
+        ls -la /opt/
 
-    - name: Build HACompanion using Miyoo toolchain Docker
+    - name: Build HACompanion using Miyoo toolchain
       run: |
         set -ex
 
-        # Use the locally built Miyoo toolchain
-        docker run --rm -v $PWD:/root/workspace miyoo-toolchain:local /bin/bash -c '
-          set -ex
-          cd /root/workspace
+        # Set up toolchain paths
+        export CROSS_PREFIX=/opt/miyoomini-toolchain/bin/arm-linux-gnueabihf-
+        export SYSROOT=/opt/miyoomini-toolchain/arm-linux-gnueabihf/sysroot
+        export DEPS=$PWD/deps
+        mkdir -p $DEPS/lib $DEPS/include
 
-          # Set up paths - toolchain location varies, so we find it dynamically
-          export DEPS=/root/workspace/deps
-          mkdir -p $DEPS/lib $DEPS/include
+        echo "=== Toolchain Info ==="
+        ${CROSS_PREFIX}gcc --version
 
-          echo "=== Finding toolchain ==="
-          GCC_PATH=$(find /opt -name "arm-linux-gnueabihf-gcc" -type f 2>/dev/null | head -1)
-          if [ -n "$GCC_PATH" ]; then
-            export CROSS_PREFIX=$(dirname $GCC_PATH)/arm-linux-gnueabihf-
-          else
-            echo "ERROR: Could not find ARM cross-compiler"
-            exit 1
-          fi
+        # Find SDL2 paths
+        echo "=== Finding SDL2 ==="
+        SDL2_SO=$(find /opt/miyoomini-toolchain -name "libSDL2*.so*" -type f 2>/dev/null | head -1)
+        SDL2_LIB_PATH=$(dirname "$SDL2_SO")
+        SDL_H=$(find /opt/miyoomini-toolchain -name "SDL.h" 2>/dev/null | head -1)
+        SDL2_INC_PATH=$(dirname "$SDL_H")
 
-          echo "=== Toolchain Info ==="
-          ${CROSS_PREFIX}gcc --version
+        echo "SDL2 library path: $SDL2_LIB_PATH"
+        echo "SDL2 include path: $SDL2_INC_PATH"
+        ls -la $SDL2_LIB_PATH/libSDL2* 2>/dev/null || echo "No SDL2 libs found"
 
-          echo "=== Finding SDL2 ==="
-          SDL2_LIB_PATH=""
-          SDL2_INC_PATH=""
+        # Build cJSON (static)
+        echo "=== Building cJSON ==="
+        wget -q https://github.com/DaveGamble/cJSON/archive/refs/tags/v1.7.16.tar.gz
+        tar xzf v1.7.16.tar.gz
+        cd cJSON-1.7.16
+        ${CROSS_PREFIX}gcc -c cJSON.c -o cJSON.o -fPIC
+        ${CROSS_PREFIX}ar rcs libcjson.a cJSON.o
+        cp libcjson.a $DEPS/lib/
+        mkdir -p $DEPS/include/cjson
+        cp cJSON.h $DEPS/include/cjson/
+        cd ..
 
-          # Find SDL2 library
-          SDL2_SO=$(find /opt -name "libSDL2*.so*" -type f 2>/dev/null | head -1)
-          if [ -n "$SDL2_SO" ]; then
-            SDL2_LIB_PATH=$(dirname "$SDL2_SO")
-          fi
+        # Build SQLite3 (static)
+        echo "=== Building SQLite3 ==="
+        wget -q https://www.sqlite.org/2024/sqlite-amalgamation-3450000.zip
+        unzip -q sqlite-amalgamation-3450000.zip
+        cd sqlite-amalgamation-3450000
+        ${CROSS_PREFIX}gcc -c sqlite3.c -o sqlite3.o -DSQLITE_OMIT_LOAD_EXTENSION -fPIC
+        ${CROSS_PREFIX}ar rcs libsqlite3.a sqlite3.o
+        cp libsqlite3.a $DEPS/lib/
+        cp sqlite3.h sqlite3ext.h $DEPS/include/
+        cd ..
 
-          # Find SDL2 headers
-          SDL_H=$(find /opt -name "SDL.h" 2>/dev/null | head -1)
-          if [ -n "$SDL_H" ]; then
-            SDL2_INC_PATH=$(dirname "$SDL_H")
-          fi
+        # Build Freetype (shared, for SDL2_ttf)
+        echo "=== Building Freetype ==="
+        wget -q --timeout=120 https://downloads.sourceforge.net/project/freetype/freetype2/2.13.2/freetype-2.13.2.tar.gz || \
+          wget -q https://download.savannah.gnu.org/releases/freetype/freetype-2.13.2.tar.gz
+        tar xzf freetype-2.13.2.tar.gz
+        cd freetype-2.13.2
+        ./configure --host=arm-linux-gnueabihf --prefix=$DEPS \
+          CC="${CROSS_PREFIX}gcc" \
+          --enable-shared --disable-static \
+          --with-zlib=no --with-bzip2=no --with-png=no --with-harfbuzz=no --with-brotli=no
+        make -j$(nproc)
+        make install
+        cd ..
 
-          echo "SDL2 library path: $SDL2_LIB_PATH"
-          echo "SDL2 include path: $SDL2_INC_PATH"
-          ls -la $SDL2_LIB_PATH/libSDL2* 2>/dev/null || echo "No SDL2 libs found"
-          ls $SDL2_INC_PATH/*.h 2>/dev/null | head -5 || echo "No SDL2 headers found"
+        # Build SDL2_ttf (shared)
+        echo "=== Building SDL2_ttf ==="
+        wget -q https://github.com/libsdl-org/SDL_ttf/releases/download/release-2.20.2/SDL2_ttf-2.20.2.tar.gz
+        tar xzf SDL2_ttf-2.20.2.tar.gz
+        cd SDL2_ttf-2.20.2
+        export PKG_CONFIG_PATH=$DEPS/lib/pkgconfig:$SDL2_LIB_PATH/pkgconfig:$PKG_CONFIG_PATH
+        ./configure --host=arm-linux-gnueabihf --prefix=$DEPS \
+          CC="${CROSS_PREFIX}gcc" \
+          --enable-shared --disable-static \
+          --disable-freetype-builtin \
+          --disable-harfbuzz \
+          --disable-sdltest \
+          CFLAGS="-I$SDL2_INC_PATH -I$DEPS/include/freetype2" \
+          LDFLAGS="-L$SDL2_LIB_PATH -L$DEPS/lib -Wl,--allow-shlib-undefined" \
+          FREETYPE_CFLAGS="-I$DEPS/include/freetype2" \
+          FREETYPE_LIBS="-L$DEPS/lib -lfreetype"
+        make -j$(nproc) libSDL2_ttf.la
+        cp -a .libs/libSDL2_ttf*.so* $DEPS/lib/
+        cp SDL_ttf.h $DEPS/include/
+        cd ..
 
-          # Build cJSON (static)
-          echo "=== Building cJSON ==="
-          wget -q https://github.com/DaveGamble/cJSON/archive/refs/tags/v1.7.16.tar.gz
-          tar xzf v1.7.16.tar.gz
-          cd cJSON-1.7.16
-          ${CROSS_PREFIX}gcc -c cJSON.c -o cJSON.o -fPIC
-          ${CROSS_PREFIX}ar rcs libcjson.a cJSON.o
-          cp libcjson.a $DEPS/lib/
-          mkdir -p $DEPS/include/cjson
-          cp cJSON.h $DEPS/include/cjson/
-          cd ..
+        # Build SDL2_image (shared)
+        echo "=== Building SDL2_image ==="
+        wget -q https://github.com/libsdl-org/SDL_image/releases/download/release-2.6.3/SDL2_image-2.6.3.tar.gz
+        tar xzf SDL2_image-2.6.3.tar.gz
+        cd SDL2_image-2.6.3
+        ./configure --host=arm-linux-gnueabihf --prefix=$DEPS \
+          CC="${CROSS_PREFIX}gcc" \
+          --enable-shared --disable-static \
+          --disable-sdltest \
+          --disable-jpg --disable-png-shared --disable-webp --disable-tif \
+          CFLAGS="-I$SDL2_INC_PATH" \
+          LDFLAGS="-L$SDL2_LIB_PATH -L$DEPS/lib -Wl,--allow-shlib-undefined"
+        make -j$(nproc) libSDL2_image.la
+        cp -a .libs/libSDL2_image*.so* $DEPS/lib/
+        cp SDL_image.h $DEPS/include/
+        cd ..
 
-          # Build SQLite3 (static)
-          echo "=== Building SQLite3 ==="
-          wget -q https://www.sqlite.org/2024/sqlite-amalgamation-3450000.zip
-          unzip -q sqlite-amalgamation-3450000.zip
-          cd sqlite-amalgamation-3450000
-          ${CROSS_PREFIX}gcc -c sqlite3.c -o sqlite3.o -DSQLITE_OMIT_LOAD_EXTENSION -fPIC
-          ${CROSS_PREFIX}ar rcs libsqlite3.a sqlite3.o
-          cp libsqlite3.a $DEPS/lib/
-          cp sqlite3.h sqlite3ext.h $DEPS/include/
-          cd ..
+        # Build OpenSSL (static, for curl)
+        echo "=== Building OpenSSL ==="
+        wget -q https://www.openssl.org/source/openssl-1.1.1w.tar.gz
+        tar xzf openssl-1.1.1w.tar.gz
+        cd openssl-1.1.1w
+        ./Configure linux-armv4 --prefix=$DEPS \
+          --openssldir=$DEPS/ssl \
+          no-shared no-tests \
+          --cross-compile-prefix=${CROSS_PREFIX}
+        make -j$(nproc)
+        make install_sw
+        cd ..
 
-          # Build Freetype (shared, for SDL2_ttf)
-          echo "=== Building Freetype ==="
-          wget -q --timeout=120 https://downloads.sourceforge.net/project/freetype/freetype2/2.13.2/freetype-2.13.2.tar.gz || \
-            wget -q https://download.savannah.gnu.org/releases/freetype/freetype-2.13.2.tar.gz
-          tar xzf freetype-2.13.2.tar.gz
-          cd freetype-2.13.2
-          ./configure --host=arm-linux-gnueabihf --prefix=$DEPS \
-            CC="${CROSS_PREFIX}gcc" \
-            --enable-shared --disable-static \
-            --with-zlib=no --with-bzip2=no --with-png=no --with-harfbuzz=no --with-brotli=no
-          make -j$(nproc)
-          make install
-          cd ..
+        # Build libcurl (static)
+        echo "=== Building libcurl ==="
+        wget -q https://curl.se/download/curl-8.5.0.tar.gz
+        tar xzf curl-8.5.0.tar.gz
+        cd curl-8.5.0
+        ./configure --host=arm-linux-gnueabihf --prefix=$DEPS \
+          CC="${CROSS_PREFIX}gcc" \
+          --disable-shared --enable-static \
+          --with-openssl=$DEPS \
+          --without-zlib --without-brotli --without-zstd \
+          --without-libpsl --without-nghttp2 \
+          --disable-ldap --disable-dict --disable-telnet --disable-tftp \
+          --disable-pop3 --disable-imap --disable-smtp --disable-gopher \
+          --disable-rtsp --disable-smb \
+          LDFLAGS="-L$DEPS/lib" \
+          CPPFLAGS="-I$DEPS/include"
+        make -j$(nproc)
+        make install
+        cd ..
 
-          # Build SDL2_ttf (shared)
-          echo "=== Building SDL2_ttf ==="
-          wget -q https://github.com/libsdl-org/SDL_ttf/releases/download/release-2.20.2/SDL2_ttf-2.20.2.tar.gz
-          tar xzf SDL2_ttf-2.20.2.tar.gz
-          cd SDL2_ttf-2.20.2
-          export PKG_CONFIG_PATH=$DEPS/lib/pkgconfig:$SDL2_LIB_PATH/pkgconfig:$PKG_CONFIG_PATH
-          ./configure --host=arm-linux-gnueabihf --prefix=$DEPS \
-            CC="${CROSS_PREFIX}gcc" \
-            --enable-shared --disable-static \
-            --disable-freetype-builtin \
-            --disable-harfbuzz \
-            --disable-sdltest \
-            CFLAGS="-I$SDL2_INC_PATH -I$DEPS/include/freetype2" \
-            LDFLAGS="-L$SDL2_LIB_PATH -L$DEPS/lib -Wl,--allow-shlib-undefined" \
-            FREETYPE_CFLAGS="-I$DEPS/include/freetype2" \
-            FREETYPE_LIBS="-L$DEPS/lib -lfreetype"
-          make -j$(nproc) libSDL2_ttf.la
-          cp -a .libs/libSDL2_ttf*.so* $DEPS/lib/
-          cp SDL_ttf.h $DEPS/include/
-          cd ..
+        echo "=== All dependencies built ==="
+        ls -la $DEPS/lib/
 
-          # Build SDL2_image (shared)
-          echo "=== Building SDL2_image ==="
-          wget -q https://github.com/libsdl-org/SDL_image/releases/download/release-2.6.3/SDL2_image-2.6.3.tar.gz
-          tar xzf SDL2_image-2.6.3.tar.gz
-          cd SDL2_image-2.6.3
-          ./configure --host=arm-linux-gnueabihf --prefix=$DEPS \
-            CC="${CROSS_PREFIX}gcc" \
-            --enable-shared --disable-static \
-            --disable-sdltest \
-            --disable-jpg --disable-png-shared --disable-webp --disable-tif \
-            CFLAGS="-I$SDL2_INC_PATH" \
-            LDFLAGS="-L$SDL2_LIB_PATH -L$DEPS/lib -Wl,--allow-shlib-undefined"
-          make -j$(nproc) libSDL2_image.la
-          cp -a .libs/libSDL2_image*.so* $DEPS/lib/
-          cp SDL_image.h $DEPS/include/
-          cd ..
+        # Build HACompanion
+        echo "=== Building HACompanion ==="
+        mkdir -p build-arm
+        cd build-arm
 
-          # Build OpenSSL (static, for curl)
-          echo "=== Building OpenSSL ==="
-          wget -q https://www.openssl.org/source/openssl-1.1.1w.tar.gz
-          tar xzf openssl-1.1.1w.tar.gz
-          cd openssl-1.1.1w
-          ./Configure linux-armv4 --prefix=$DEPS \
-            --openssldir=$DEPS/ssl \
-            no-shared no-tests \
-            --cross-compile-prefix=${CROSS_PREFIX}
-          make -j$(nproc)
-          make install_sw
-          cd ..
+        # Direct compilation (avoid cmake cross-compile complexity)
+        ${CROSS_PREFIX}gcc \
+          -march=armv7-a -mtune=cortex-a7 -mfpu=neon-vfpv4 -mfloat-abi=hard \
+          -I$SDL2_INC_PATH \
+          -I$DEPS/include \
+          -I$DEPS/include/freetype2 \
+          -I../src \
+          -o hacompanion \
+          ../src/main.c \
+          ../src/ha_client.c \
+          ../src/database.c \
+          ../src/cache_manager.c \
+          ../src/audio.c \
+          ../src/ui/fonts.c \
+          ../src/ui/icons.c \
+          ../src/ui/components.c \
+          ../src/screens/screen_setup.c \
+          ../src/screens/screen_list.c \
+          ../src/screens/screen_device.c \
+          ../src/screens/screen_info.c \
+          ../src/screens/screen_automation.c \
+          ../src/screens/screen_script.c \
+          ../src/screens/screen_scene.c \
+          ../src/utils/input.c \
+          ../src/utils/config.c \
+          ../src/utils/json_helpers.c \
+          -L$SDL2_LIB_PATH \
+          -L$DEPS/lib \
+          -Wl,-rpath,/mnt/SDCARD/App/HACompanion/lib \
+          -lSDL2 -lSDL2_ttf -lSDL2_image \
+          -lfreetype \
+          -lcurl -lssl -lcrypto \
+          -lsqlite3 -lcjson \
+          -lpthread -ldl -lm
 
-          # Build libcurl (static)
-          echo "=== Building libcurl ==="
-          wget -q https://curl.se/download/curl-8.5.0.tar.gz
-          tar xzf curl-8.5.0.tar.gz
-          cd curl-8.5.0
-          ./configure --host=arm-linux-gnueabihf --prefix=$DEPS \
-            CC="${CROSS_PREFIX}gcc" \
-            --disable-shared --enable-static \
-            --with-openssl=$DEPS \
-            --without-zlib --without-brotli --without-zstd \
-            --without-libpsl --without-nghttp2 \
-            --disable-ldap --disable-dict --disable-telnet --disable-tftp \
-            --disable-pop3 --disable-imap --disable-smtp --disable-gopher \
-            --disable-rtsp --disable-smb \
-            LDFLAGS="-L$DEPS/lib" \
-            CPPFLAGS="-I$DEPS/include"
-          make -j$(nproc)
-          make install
-          cd ..
+        echo "=== Binary info ==="
+        ls -la hacompanion
+        file hacompanion
+        ${CROSS_PREFIX}readelf -d hacompanion | grep NEEDED || true
 
-          echo "=== All dependencies built ==="
-          ls -la $DEPS/lib/
-
-          # Build HACompanion
-          echo "=== Building HACompanion ==="
-          mkdir -p build-arm
-          cd build-arm
-
-          # Direct compilation (avoid cmake cross-compile complexity)
-          ${CROSS_PREFIX}gcc \
-            -march=armv7-a -mtune=cortex-a7 -mfpu=neon-vfpv4 -mfloat-abi=hard \
-            -I$SDL2_INC_PATH \
-            -I$DEPS/include \
-            -I$DEPS/include/freetype2 \
-            -I../src \
-            -o hacompanion \
-            ../src/main.c \
-            ../src/ha_client.c \
-            ../src/database.c \
-            ../src/cache_manager.c \
-            ../src/audio.c \
-            ../src/ui/fonts.c \
-            ../src/ui/icons.c \
-            ../src/ui/components.c \
-            ../src/screens/screen_setup.c \
-            ../src/screens/screen_list.c \
-            ../src/screens/screen_device.c \
-            ../src/screens/screen_info.c \
-            ../src/screens/screen_automation.c \
-            ../src/screens/screen_script.c \
-            ../src/screens/screen_scene.c \
-            ../src/utils/input.c \
-            ../src/utils/config.c \
-            ../src/utils/json_helpers.c \
-            -L$SDL2_LIB_PATH \
-            -L$DEPS/lib \
-            -Wl,-rpath,/mnt/SDCARD/App/HACompanion/lib \
-            -lSDL2 -lSDL2_ttf -lSDL2_image \
-            -lfreetype \
-            -lcurl -lssl -lcrypto \
-            -lsqlite3 -lcjson \
-            -lpthread -ldl -lm
-
-          echo "=== Binary info ==="
-          ls -la hacompanion
-          file hacompanion
-          ${CROSS_PREFIX}readelf -d hacompanion | grep NEEDED || true
-
-          # Save SDL2 library path for packaging step
-          echo "$SDL2_LIB_PATH" > /root/workspace/SDL2_LIB_PATH.txt
-        '
+        # Save SDL2 library path for packaging step
+        echo "$SDL2_LIB_PATH" > ../SDL2_LIB_PATH.txt
 
     - name: Create Miyoo package
       run: |
@@ -400,108 +347,97 @@ jobs:
         cp -r assets release/HACompanion/
         cp assets/icon.png release/HACompanion/icon.png
 
-        # Bundle libraries from toolchain (ensures ABI compatibility)
-        docker run --rm -v $PWD:/root/workspace miyoo-toolchain:local /bin/bash -c '
-          set -ex
-          cd /root/workspace
-          SDL2_LIB_PATH=$(cat SDL2_LIB_PATH.txt)
+        # Bundle SDL2 library from toolchain (ensures ABI compatibility)
+        SDL2_LIB_PATH=$(cat SDL2_LIB_PATH.txt)
+        if [ -n "$SDL2_LIB_PATH" ]; then
+          cp -L $SDL2_LIB_PATH/libSDL2-2.0.so.0 release/HACompanion/lib/ 2>/dev/null || \
+            cp -L $SDL2_LIB_PATH/libSDL2.so release/HACompanion/lib/libSDL2-2.0.so.0 2>/dev/null || \
+            find $SDL2_LIB_PATH -name "libSDL2*.so*" -exec cp -L {} release/HACompanion/lib/ \;
+        fi
 
-          # Copy SDL2 from the toolchain sysroot
-          if [ -n "$SDL2_LIB_PATH" ]; then
-            cp -L $SDL2_LIB_PATH/libSDL2-2.0.so.0 release/HACompanion/lib/ 2>/dev/null || \
-              cp -L $SDL2_LIB_PATH/libSDL2.so release/HACompanion/lib/libSDL2-2.0.so.0 2>/dev/null || \
-              find $SDL2_LIB_PATH -name "libSDL2*.so*" -exec cp -L {} release/HACompanion/lib/ \;
-          fi
+        # Copy EGL/GLES if present in toolchain
+        find /opt/miyoomini-toolchain -name "libEGL.so*" -type f 2>/dev/null | head -1 | xargs -I{} cp -L {} release/HACompanion/lib/ 2>/dev/null || true
+        find /opt/miyoomini-toolchain -name "libGLESv2.so*" -type f 2>/dev/null | head -1 | xargs -I{} cp -L {} release/HACompanion/lib/ 2>/dev/null || true
 
-          # Copy EGL/GLES if present in toolchain
-          find /opt -name "libEGL.so*" -type f 2>/dev/null | head -1 | xargs -I{} cp -L {} release/HACompanion/lib/ 2>/dev/null || true
-          find /opt -name "libGLESv2.so*" -type f 2>/dev/null | head -1 | xargs -I{} cp -L {} release/HACompanion/lib/ 2>/dev/null || true
+        # Copy our built shared libraries
+        cp -L deps/lib/libSDL2_ttf-2.0.so.0 release/HACompanion/lib/ 2>/dev/null || \
+          cp -L deps/lib/libSDL2_ttf.so.0 release/HACompanion/lib/libSDL2_ttf-2.0.so.0 2>/dev/null || \
+          cp -L deps/lib/libSDL2_ttf.so release/HACompanion/lib/libSDL2_ttf-2.0.so.0
+        cp -L deps/lib/libSDL2_image-2.0.so.0 release/HACompanion/lib/ 2>/dev/null || \
+          cp -L deps/lib/libSDL2_image.so.0 release/HACompanion/lib/libSDL2_image-2.0.so.0 2>/dev/null || \
+          cp -L deps/lib/libSDL2_image.so release/HACompanion/lib/libSDL2_image-2.0.so.0
+        cp -L deps/lib/libfreetype.so.6 release/HACompanion/lib/ 2>/dev/null || \
+          cp -L deps/lib/libfreetype.so release/HACompanion/lib/libfreetype.so.6
 
-          # Copy our built shared libraries
-          cp -L deps/lib/libSDL2_ttf-2.0.so.0 release/HACompanion/lib/ 2>/dev/null || \
-            cp -L deps/lib/libSDL2_ttf.so.0 release/HACompanion/lib/libSDL2_ttf-2.0.so.0 2>/dev/null || \
-            cp -L deps/lib/libSDL2_ttf.so release/HACompanion/lib/libSDL2_ttf-2.0.so.0
-          cp -L deps/lib/libSDL2_image-2.0.so.0 release/HACompanion/lib/ 2>/dev/null || \
-            cp -L deps/lib/libSDL2_image.so.0 release/HACompanion/lib/libSDL2_image-2.0.so.0 2>/dev/null || \
-            cp -L deps/lib/libSDL2_image.so release/HACompanion/lib/libSDL2_image-2.0.so.0
-          cp -L deps/lib/libfreetype.so.6 release/HACompanion/lib/ 2>/dev/null || \
-            cp -L deps/lib/libfreetype.so release/HACompanion/lib/libfreetype.so.6
-
-          ls -la release/HACompanion/lib/
-        '
+        ls -la release/HACompanion/lib/
 
         # Create launch script
-        cat > release/HACompanion/launch.sh << 'LAUNCH_EOF'
-        #!/bin/sh
-        # Home Assistant Companion launcher for Miyoo Mini Plus / OnionOS
+        cat > release/HACompanion/launch.sh << 'EOF'
+#!/bin/sh
+# Home Assistant Companion launcher for Miyoo Mini Plus / OnionOS
 
-        cd /mnt/SDCARD/App/HACompanion
-        export HOME=/mnt/SDCARD/App/HACompanion
+cd /mnt/SDCARD/App/HACompanion
+export HOME=/mnt/SDCARD/App/HACompanion
 
-        # Set all video/audio drivers to mmiyoo
-        export SDL_VIDEODRIVER=mmiyoo
-        export SDL_AUDIODRIVER=mmiyoo
-        export EGL_VIDEODRIVER=mmiyoo
+# Set all video/audio drivers to mmiyoo
+export SDL_VIDEODRIVER=mmiyoo
+export SDL_AUDIODRIVER=mmiyoo
+export EGL_VIDEODRIVER=mmiyoo
 
-        # Use our bundled libraries first, then system libraries
-        export LD_LIBRARY_PATH="./lib:/mnt/SDCARD/miyoo/lib:/mnt/SDCARD/.tmp_update/lib:/mnt/SDCARD/.tmp_update/lib/parasyte:$LD_LIBRARY_PATH"
+# Use our bundled libraries first, then system libraries
+export LD_LIBRARY_PATH="./lib:/mnt/SDCARD/miyoo/lib:/mnt/SDCARD/.tmp_update/lib:/mnt/SDCARD/.tmp_update/lib/parasyte:$LD_LIBRARY_PATH"
 
-        # Run the application
-        ./hacompanion 2>&1 | tee debug.log
-        LAUNCH_EOF
-        # Remove leading whitespace from heredoc
-        sed -i 's/^        //' release/HACompanion/launch.sh
+# Run the application
+./hacompanion 2>&1 | tee debug.log
+EOF
         chmod +x release/HACompanion/launch.sh
 
         # Create debug launch script
-        cat > release/HACompanion/launch_debug.sh << 'LAUNCH_EOF'
-        #!/bin/sh
-        cd /mnt/SDCARD/App/HACompanion
-        echo "=== HACompanion Debug Launch ===" | tee debug.log
-        echo "Date: $(date)" | tee -a debug.log
+        cat > release/HACompanion/launch_debug.sh << 'EOF'
+#!/bin/sh
+cd /mnt/SDCARD/App/HACompanion
+echo "=== HACompanion Debug Launch ===" | tee debug.log
+echo "Date: $(date)" | tee -a debug.log
 
-        export HOME=/mnt/SDCARD/App/HACompanion
-        export SDL_VIDEODRIVER=mmiyoo
-        export SDL_AUDIODRIVER=mmiyoo
-        export EGL_VIDEODRIVER=mmiyoo
-        export LD_LIBRARY_PATH="./lib:/mnt/SDCARD/miyoo/lib:/mnt/SDCARD/.tmp_update/lib:/mnt/SDCARD/.tmp_update/lib/parasyte:$LD_LIBRARY_PATH"
+export HOME=/mnt/SDCARD/App/HACompanion
+export SDL_VIDEODRIVER=mmiyoo
+export SDL_AUDIODRIVER=mmiyoo
+export EGL_VIDEODRIVER=mmiyoo
+export LD_LIBRARY_PATH="./lib:/mnt/SDCARD/miyoo/lib:/mnt/SDCARD/.tmp_update/lib:/mnt/SDCARD/.tmp_update/lib/parasyte:$LD_LIBRARY_PATH"
 
-        echo "LD_LIBRARY_PATH: $LD_LIBRARY_PATH" | tee -a debug.log
-        echo "Starting app..." | tee -a debug.log
-        ./hacompanion 2>&1 | tee -a debug.log
-        echo "Exit code: $?" | tee -a debug.log
-        LAUNCH_EOF
-        sed -i 's/^        //' release/HACompanion/launch_debug.sh
+echo "LD_LIBRARY_PATH: $LD_LIBRARY_PATH" | tee -a debug.log
+echo "Starting app..." | tee -a debug.log
+./hacompanion 2>&1 | tee -a debug.log
+echo "Exit code: $?" | tee -a debug.log
+EOF
         chmod +x release/HACompanion/launch_debug.sh
 
         # Create config.json for OnionOS
-        cat > release/HACompanion/config.json << 'LAUNCH_EOF'
-        {
-          "label": "HA Companion",
-          "icon": "icon.png",
-          "launch": "launch.sh",
-          "description": "Home Assistant Companion"
-        }
-        LAUNCH_EOF
-        sed -i 's/^        //' release/HACompanion/config.json
+        cat > release/HACompanion/config.json << 'EOF'
+{
+  "label": "HA Companion",
+  "icon": "icon.png",
+  "launch": "launch.sh",
+  "description": "Home Assistant Companion"
+}
+EOF
 
         # Create sample servers.json
-        cat > release/HACompanion/servers.json.example << 'LAUNCH_EOF'
-        {
-          "servers": [
-            {
-              "name": "Home",
-              "url": "http://homeassistant.local",
-              "port": 8123,
-              "token": "YOUR_LONG_LIVED_ACCESS_TOKEN_HERE",
-              "username": "admin",
-              "insecure": 1
-            }
-          ],
-          "default_server": 0
-        }
-        LAUNCH_EOF
-        sed -i 's/^        //' release/HACompanion/servers.json.example
+        cat > release/HACompanion/servers.json.example << 'EOF'
+{
+  "servers": [
+    {
+      "name": "Home",
+      "url": "http://homeassistant.local",
+      "port": 8123,
+      "token": "YOUR_LONG_LIVED_ACCESS_TOKEN_HERE",
+      "username": "admin",
+      "insecure": 1
+    }
+  ],
+  "default_server": 0
+}
+EOF
 
         cd release
         zip -r HACompanion-miyoo.zip HACompanion/
