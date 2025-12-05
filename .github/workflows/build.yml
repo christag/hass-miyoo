@@ -231,8 +231,8 @@ jobs:
           LDFLAGS="-L$DEPS/lib -Wl,--allow-shlib-undefined" \
           FREETYPE_CFLAGS="-I$DEPS/include/freetype2" \
           FREETYPE_LIBS="-L$DEPS/lib -lfreetype"
-        # Only build the library, skip sample programs (glfont, showfont)
-        make -j$(nproc) -C . lib
+        # Build only libSDL2_ttf.la (the library), skip sample programs
+        make -j$(nproc) libSDL2_ttf.la
         # Install manually to avoid sample program issues
         cp -a .libs/libSDL2_ttf*.so* $DEPS/lib/
         cp SDL_ttf.h $DEPS/include/SDL2/
@@ -256,11 +256,11 @@ jobs:
           --disable-jpg --disable-png-shared --disable-webp --disable-tif \
           CFLAGS="-I$DEPS/include/SDL2" \
           LDFLAGS="-L$DEPS/lib -Wl,--allow-shlib-undefined"
-        # Only build the library, skip sample programs
-        make -j$(nproc) -C . lib || make -j$(nproc)
+        # Build only libSDL2_image.la (the library), skip sample programs
+        make -j$(nproc) libSDL2_image.la
         # Install manually to avoid sample program issues
-        cp -a .libs/libSDL2_image*.so* $DEPS/lib/ || make install
-        cp SDL_image.h $DEPS/include/SDL2/ || true
+        cp -a .libs/libSDL2_image*.so* $DEPS/lib/
+        cp SDL_image.h $DEPS/include/SDL2/
         cd ..
 
         # OpenSSL (for HTTPS support in libcurl)
