@@ -181,7 +181,7 @@ jobs:
         cd freetype-2.13.2
         ./configure --host=arm-linux-gnueabihf --prefix=$DEPS \
           --enable-shared --disable-static \
-          --with-zlib=no --with-bzip2=no --with-png=no --with-harfbuzz=no
+          --with-zlib=no --with-bzip2=no --with-png=no --with-harfbuzz=no --with-brotli=no
         make -j$(nproc)
         make install
         cd ..
