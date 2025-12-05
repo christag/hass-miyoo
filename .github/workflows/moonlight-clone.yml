@@ -120,41 +120,38 @@ jobs:
         cp moonlight/lib/*.so* release/moonlight-clone/lib/
 
         # Create launch script (based on original moonlight launch.sh)
-        cat > release/moonlight-clone/launch.sh << 'LAUNCHEOF'
-#!/bin/sh
-export moonlightdir=/mnt/SDCARD/App/moonlight-clone
-cd $moonlightdir
-
-export PATH=$PATH:$PWD/bin
-export HOME=$moonlightdir
-export LD_LIBRARY_PATH=./lib:/lib:/config/lib:/mnt/SDCARD/miyoo/lib:/mnt/SDCARD/.tmp_update/lib:/mnt/SDCARD/.tmp_update/lib/parasyte
-export SDL_VIDEODRIVER=mmiyoo
-export SDL_AUDIODRIVER=mmiyoo
-export EGL_VIDEODRIVER=mmiyoo
-
-# Kill audio servers like moonlight does
-pkill -9 -f "audioserver" 2>/dev/null || true
-killall -q "audioserver.mod" 2>/dev/null || true
-
-echo "=== Moonlight Clone Launch ===" > moonlight-clone.log
-echo "Date: $(date)" >> moonlight-clone.log
-echo "LD_LIBRARY_PATH: $LD_LIBRARY_PATH" >> moonlight-clone.log
-
-# Run moonlight (menu mode for testing)
-LD_PRELOAD="./lib/libuuid.so" ./bin/moonlight -help >> moonlight-clone.log 2>&1
-echo "Exit code: $?" >> moonlight-clone.log
-LAUNCHEOF
+        # Using printf to avoid YAML heredoc parsing issues
+        printf '%s\n' '#!/bin/sh' > release/moonlight-clone/launch.sh
+        printf '%s\n' 'export moonlightdir=/mnt/SDCARD/App/moonlight-clone' >> release/moonlight-clone/launch.sh
+        printf '%s\n' 'cd $moonlightdir' >> release/moonlight-clone/launch.sh
+        printf '%s\n' '' >> release/moonlight-clone/launch.sh
+        printf '%s\n' 'export PATH=$PATH:$PWD/bin' >> release/moonlight-clone/launch.sh
+        printf '%s\n' 'export HOME=$moonlightdir' >> release/moonlight-clone/launch.sh
+        printf '%s\n' 'export LD_LIBRARY_PATH=./lib:/lib:/config/lib:/mnt/SDCARD/miyoo/lib:/mnt/SDCARD/.tmp_update/lib:/mnt/SDCARD/.tmp_update/lib/parasyte' >> release/moonlight-clone/launch.sh
+        printf '%s\n' 'export SDL_VIDEODRIVER=mmiyoo' >> release/moonlight-clone/launch.sh
+        printf '%s\n' 'export SDL_AUDIODRIVER=mmiyoo' >> release/moonlight-clone/launch.sh
+        printf '%s\n' 'export EGL_VIDEODRIVER=mmiyoo' >> release/moonlight-clone/launch.sh
+        printf '%s\n' '' >> release/moonlight-clone/launch.sh
+        printf '%s\n' '# Kill audio servers like moonlight does' >> release/moonlight-clone/launch.sh
+        printf '%s\n' 'pkill -9 -f "audioserver" 2>/dev/null || true' >> release/moonlight-clone/launch.sh
+        printf '%s\n' 'killall -q "audioserver.mod" 2>/dev/null || true' >> release/moonlight-clone/launch.sh
+        printf '%s\n' '' >> release/moonlight-clone/launch.sh
+        printf '%s\n' 'echo "=== Moonlight Clone Launch ===" > moonlight-clone.log' >> release/moonlight-clone/launch.sh
+        printf '%s\n' 'echo "Date: $(date)" >> moonlight-clone.log' >> release/moonlight-clone/launch.sh
+        printf '%s\n' 'echo "LD_LIBRARY_PATH: $LD_LIBRARY_PATH" >> moonlight-clone.log' >> release/moonlight-clone/launch.sh
+        printf '%s\n' '' >> release/moonlight-clone/launch.sh
+        printf '%s\n' '# Run moonlight (menu mode for testing)' >> release/moonlight-clone/launch.sh
+        printf '%s\n' 'LD_PRELOAD="./lib/libuuid.so" ./bin/moonlight -help >> moonlight-clone.log 2>&1' >> release/moonlight-clone/launch.sh
+        printf '%s\n' 'echo "Exit code: $?" >> moonlight-clone.log' >> release/moonlight-clone/launch.sh
         chmod +x release/moonlight-clone/launch.sh
 
         # Create config.json for OnionOS
-        cat > release/moonlight-clone/config.json << 'CFGEOF'
-{
-  "label": "Moonlight Clone",
-  "icon": "icon.png",
-  "launch": "launch.sh",
-  "description": "Moonlight clone build test"
-}
-CFGEOF
+        printf '%s\n' '{' > release/moonlight-clone/config.json
+        printf '%s\n' '  "label": "Moonlight Clone",' >> release/moonlight-clone/config.json
+        printf '%s\n' '  "icon": "icon.png",' >> release/moonlight-clone/config.json
+        printf '%s\n' '  "launch": "launch.sh",' >> release/moonlight-clone/config.json
+        printf '%s\n' '  "description": "Moonlight clone build test"' >> release/moonlight-clone/config.json
+        printf '%s\n' '}' >> release/moonlight-clone/config.json
 
         # Copy icon from original moonlight if available
         cp moonlight/res/*.png release/moonlight-clone/icon.png 2>/dev/null || \
