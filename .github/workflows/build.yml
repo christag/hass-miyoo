@@ -271,12 +271,16 @@ jobs:
         export DEPS=$PWD/deps
 
         # Compile test_display using our built SDL2
+        # -rpath-link helps linker find EGL/GLES libs that SDL2 depends on
+        # --allow-shlib-undefined defers libjson-c resolution to runtime (exists on device)
         ${CROSS_PREFIX}gcc \
           -march=armv7-a -mtune=cortex-a7 -mfpu=neon-vfpv4 -mfloat-abi=hard \
           -I$DEPS/include/SDL2 \
           -o test_display \
           src/test_display.c \
           -L$DEPS/lib \
+          -Wl,-rpath-link,$DEPS/lib \
+          -Wl,--allow-shlib-undefined \
           -Wl,-rpath,/mnt/SDCARD/App/test_display/lib \
           -lSDL2 -lpthread -ldl
 
@@ -696,6 +700,8 @@ jobs:
         cd build-arm
 
         # Direct compilation (avoid cmake cross-compile complexity)
+        # -rpath-link helps linker find EGL/GLES libs that SDL2 depends on
+        # --allow-shlib-undefined defers libjson-c resolution to runtime (exists on device)
         ${CROSS_PREFIX}gcc \
           -march=armv7-a -mtune=cortex-a7 -mfpu=neon-vfpv4 -mfloat-abi=hard \
           -I$SDL2_INC_PATH \
@@ -723,6 +729,8 @@ jobs:
           ../src/utils/json_helpers.c \
           -L$SDL2_LIB_PATH \
           -L$DEPS/lib \
+          -Wl,-rpath-link,$DEPS/lib \
+          -Wl,--allow-shlib-undefined \
           -Wl,-rpath,/mnt/SDCARD/App/HACompanion/lib \
           -lSDL2 -lSDL2_ttf -lSDL2_image \
           -lfreetype \

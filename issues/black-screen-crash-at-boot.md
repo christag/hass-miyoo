@@ -550,10 +550,16 @@ cat /dev/urandom > /dev/fb0  # Shows static on screen
   - Bundle all libraries with the app
   - **Problem 1**: Missing `SDL_config.h` - headers from repo are source templates, not generated
   - **Problem 2**: SDL2_ttf configure can't find SDL2 (no pkg-config or sdl2-config)
-- **Attempt 19d (CURRENT)**: Fix prebuilt approach with generated config
+- **Attempt 19d**: Fix prebuilt approach with generated config
   - Generate `SDL_config.h` for Miyoo Mini (normally created by configure)
   - Create `sdl2-config` script and `sdl2.pc` pkg-config file
   - Bundle all libraries with the app
+  - **Problem**: Linker can't find libEGL.so, libGLESv2.so, libjson-c.so.5 at link time
+  - Error: `warning: libEGL.so, needed by libSDL2.so, not found (try using -rpath or -rpath-link)`
+- **Attempt 19e (CURRENT)**: Fix linker rpath issues
+  - Added `-Wl,-rpath-link,$DEPS/lib` to help linker find EGL/GLES libraries that SDL2 depends on
+  - Added `-Wl,--allow-shlib-undefined` to defer libjson-c resolution to runtime (exists on device)
+  - These flags tell the linker where to find indirect dependencies during link time
 - **Why Prebuilt Libraries**:
   - steward-fu compiled these with his custom toolchain (`/opt/mini/`)
   - They have the MMIYOO driver built in
