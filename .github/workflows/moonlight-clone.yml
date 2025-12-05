@@ -1,0 +1,203 @@
+name: Build Moonlight Clone
+
+on:
+  push:
+    branches: [ main, master ]
+    paths:
+      - '.github/workflows/moonlight-clone.yml'
+  workflow_dispatch:
+
+jobs:
+  # Build moonlight-embedded-miyoo from source using the same toolchain as XK9274
+  build-moonlight:
+    runs-on: ubuntu-22.04
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Cache toolchain
+      id: cache-toolchain
+      uses: actions/cache@v4
+      with:
+        path: miyoomini-toolchain.tar.xz
+        key: miyoo-toolchain-v0.0.3
+
+    - name: Download prebuilt Miyoo toolchain
+      if: steps.cache-toolchain.outputs.cache-hit != 'true'
+      run: |
+        wget -q https://github.com/shauninman/miyoomini-toolchain-buildroot/releases/download/v0.0.3/miyoomini-toolchain.tar.xz
+
+    - name: Extract toolchain
+      run: |
+        sudo mkdir -p /opt
+        sudo tar xf miyoomini-toolchain.tar.xz -C /opt
+        ls -la /opt/
+
+    - name: Install build dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y cmake ninja-build pkg-config
+
+    - name: Clone moonlight-embedded-miyoo
+      run: |
+        git clone --recursive https://github.com/XK9274/moonlight-embedded-miyoo.git
+        cd moonlight-embedded-miyoo
+        git submodule update --init --recursive
+        ls -la
+
+    - name: Get prebuilt dependencies from moonlight-app-miyoo
+      run: |
+        # Download the full moonlight app package which has all prebuilt libs
+        wget -q https://github.com/XK9274/moonlight-app-miyoo/releases/download/v1.5.1/moonlight.zip
+        unzip -q moonlight.zip
+        ls -la moonlight/lib/
+
+        # These are the prebuilt libraries that moonlight uses
+        # We'll use them for linking
+        mkdir -p deps/lib deps/include
+        cp moonlight/lib/*.so* deps/lib/ || true
+
+    - name: Set up cross-compile environment
+      run: |
+        export CROSS_PREFIX=/opt/miyoomini-toolchain/bin/arm-linux-gnueabihf-
+        export SYSROOT=/opt/miyoomini-toolchain/arm-linux-gnueabihf/sysroot
+
+        echo "=== Toolchain info ==="
+        ${CROSS_PREFIX}gcc --version
+
+        # Set up pkg-config for cross-compilation
+        export PKG_CONFIG_PATH=$PWD/deps/lib/pkgconfig:/opt/miyoomini-toolchain/arm-linux-gnueabihf/sysroot/usr/lib/pkgconfig
+        export PKG_CONFIG_SYSROOT_DIR=$SYSROOT
+
+        echo "CROSS_PREFIX=${CROSS_PREFIX}" >> $GITHUB_ENV
+        echo "SYSROOT=${SYSROOT}" >> $GITHUB_ENV
+        echo "PKG_CONFIG_PATH=${PKG_CONFIG_PATH}" >> $GITHUB_ENV
+
+    - name: Build moonlight-embedded-miyoo
+      run: |
+        cd moonlight-embedded-miyoo
+
+        # Create build directory
+        mkdir -p build
+        cd build
+
+        # Configure with CMake using the cross-compilation toolchain
+        # Note: Moonlight's CMakeLists.txt has specific flags for Miyoo
+        cmake .. \
+          -DCMAKE_TOOLCHAIN_FILE=../armv7l-toolchain.cmake \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DENABLE_X11=OFF \
+          -DENABLE_PULSE=OFF \
+          -DENABLE_CEC=OFF \
+          -DCMAKE_C_FLAGS="-Wno-undef -Os -marm -mtune=cortex-a7 -mfpu=neon-vfpv4 -march=armv7ve+simd -mfloat-abi=hard -ffunction-sections -fdata-sections -I/opt/miyoomini-toolchain/arm-linux-gnueabihf/sysroot/usr/include" \
+          -DCMAKE_EXE_LINKER_FLAGS="-L$PWD/../../deps/lib -L/opt/miyoomini-toolchain/arm-linux-gnueabihf/sysroot/usr/lib"
+
+        # Build
+        make -j$(nproc) VERBOSE=1 || {
+          echo "=== Build failed, showing details ==="
+          cat CMakeFiles/CMakeError.log || true
+          cat CMakeFiles/CMakeOutput.log || true
+          exit 1
+        }
+
+        echo "=== Build output ==="
+        ls -la
+        file moonlight || true
+
+    - name: Package moonlight clone
+      run: |
+        mkdir -p release/moonlight-clone/bin
+        mkdir -p release/moonlight-clone/lib
+
+        # Copy built binary
+        cp moonlight-embedded-miyoo/build/moonlight release/moonlight-clone/bin/ || {
+          echo "Moonlight binary not found, checking for alternative locations..."
+          find moonlight-embedded-miyoo -name "moonlight" -type f | head -5
+          exit 1
+        }
+
+        # Copy libraries from moonlight app (these work on the device)
+        cp moonlight/lib/*.so* release/moonlight-clone/lib/
+
+        # Create launch script (based on original moonlight launch.sh)
+        cat > release/moonlight-clone/launch.sh << 'LAUNCHEOF'
+#!/bin/sh
+export moonlightdir=/mnt/SDCARD/App/moonlight-clone
+cd $moonlightdir
+
+export PATH=$PATH:$PWD/bin
+export HOME=$moonlightdir
+export LD_LIBRARY_PATH=./lib:/lib:/config/lib:/mnt/SDCARD/miyoo/lib:/mnt/SDCARD/.tmp_update/lib:/mnt/SDCARD/.tmp_update/lib/parasyte
+export SDL_VIDEODRIVER=mmiyoo
+export SDL_AUDIODRIVER=mmiyoo
+export EGL_VIDEODRIVER=mmiyoo
+
+# Kill audio servers like moonlight does
+pkill -9 -f "audioserver" 2>/dev/null || true
+killall -q "audioserver.mod" 2>/dev/null || true
+
+echo "=== Moonlight Clone Launch ===" > moonlight-clone.log
+echo "Date: $(date)" >> moonlight-clone.log
+echo "LD_LIBRARY_PATH: $LD_LIBRARY_PATH" >> moonlight-clone.log
+
+# Run moonlight (menu mode for testing)
+LD_PRELOAD="./lib/libuuid.so" ./bin/moonlight -help >> moonlight-clone.log 2>&1
+echo "Exit code: $?" >> moonlight-clone.log
+LAUNCHEOF
+        chmod +x release/moonlight-clone/launch.sh
+
+        # Create config.json for OnionOS
+        cat > release/moonlight-clone/config.json << 'CFGEOF'
+{
+  "label": "Moonlight Clone",
+  "icon": "icon.png",
+  "launch": "launch.sh",
+  "description": "Moonlight clone build test"
+}
+CFGEOF
+
+        # Copy icon from original moonlight if available
+        cp moonlight/res/*.png release/moonlight-clone/icon.png 2>/dev/null || \
+          echo "No icon found, will use default"
+
+        ls -la release/moonlight-clone/
+        ls -la release/moonlight-clone/bin/
+        ls -la release/moonlight-clone/lib/
+
+        cd release
+        zip -r moonlight-clone.zip moonlight-clone/
+
+    - name: Upload moonlight clone artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: moonlight-clone-miyoo
+        path: release/moonlight-clone.zip
+
+  # Update v0.1.0 release with moonlight clone
+  update-release:
+    needs: build-moonlight
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: write
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Download artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: moonlight-clone-miyoo
+        path: artifacts
+
+    - name: Update release
+      run: |
+        # Delete old asset if exists
+        gh release delete-asset v0.1.0 moonlight-clone.zip --yes || true
+
+        # Upload new asset
+        gh release upload v0.1.0 artifacts/moonlight-clone.zip --clobber
+
+        echo "Updated v0.1.0 release with moonlight clone"
+      env:
+        GH_TOKEN: ${{ github.token }}
