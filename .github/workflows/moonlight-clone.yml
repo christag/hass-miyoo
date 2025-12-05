@@ -43,6 +43,11 @@ jobs:
         mkdir -p deps/lib deps/include
         cp moonlight/lib/*.so* deps/lib/
 
+        # Create linker symlinks (linker looks for libSDL2.so, but file is libSDL2-2.0.so.0)
+        cd deps/lib
+        ln -sf libSDL2-2.0.so.0 libSDL2.so
+        cd ../..
+
         echo "=== Moonlight libraries ==="
         ls -la deps/lib/
 
