@@ -556,10 +556,15 @@ cat /dev/urandom > /dev/fb0  # Shows static on screen
   - Bundle all libraries with the app
   - **Problem**: Linker can't find libEGL.so, libGLESv2.so, libjson-c.so.5 at link time
   - Error: `warning: libEGL.so, needed by libSDL2.so, not found (try using -rpath or -rpath-link)`
-- **Attempt 19e (CURRENT)**: Fix linker rpath issues
+- **Attempt 19e**: Fix linker rpath issues
   - Added `-Wl,-rpath-link,$DEPS/lib` to help linker find EGL/GLES libraries that SDL2 depends on
   - Added `-Wl,--allow-shlib-undefined` to defer libjson-c resolution to runtime (exists on device)
   - These flags tell the linker where to find indirect dependencies during link time
+  - **BUILD SUCCESS!** - Both `build-test-display` and `build-miyoo-arm` jobs completed successfully
+- **Attempt 19f (CURRENT)**: Device testing
+  - Build artifacts uploaded to GitHub v0.1.0 release
+  - Ready for testing on physical Miyoo device
+  - Downloads available at: https://github.com/christag/hass-miyoo/releases/tag/v0.1.0
 - **Why Prebuilt Libraries**:
   - steward-fu compiled these with his custom toolchain (`/opt/mini/`)
   - They have the MMIYOO driver built in
