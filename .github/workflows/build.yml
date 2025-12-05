@@ -786,8 +786,12 @@ jobs:
         export SDL_AUDIODRIVER=mmiyoo
         export EGL_VIDEODRIVER=mmiyoo
 
-        # Use our bundled libraries first, then system libraries
-        export LD_LIBRARY_PATH="./lib:/mnt/SDCARD/miyoo/lib:/mnt/SDCARD/.tmp_update/lib:/mnt/SDCARD/.tmp_update/lib/parasyte:$LD_LIBRARY_PATH"
+        # CRITICAL FIX: Moonlight's lib directory MUST be FIRST for EGL/GLES/SDL2 dependencies
+        # This was the root cause of black screen - wrong library versions being loaded
+        export LD_LIBRARY_PATH="/mnt/SDCARD/App/moonlight/lib:./lib:/lib:/config/lib:/mnt/SDCARD/miyoo/lib:/mnt/SDCARD/.tmp_update/lib:/mnt/SDCARD/.tmp_update/lib/parasyte"
+
+        # Kill audio server like moonlight does (prevents audio conflicts)
+        pkill -9 -f "audioserver" 2>/dev/null || true
 
         # Run the application
         ./hacompanion 2>&1 | tee debug.log
@@ -806,7 +810,8 @@ jobs:
         export SDL_VIDEODRIVER=mmiyoo
         export SDL_AUDIODRIVER=mmiyoo
         export EGL_VIDEODRIVER=mmiyoo
-        export LD_LIBRARY_PATH="./lib:/mnt/SDCARD/miyoo/lib:/mnt/SDCARD/.tmp_update/lib:/mnt/SDCARD/.tmp_update/lib/parasyte:$LD_LIBRARY_PATH"
+        # CRITICAL FIX: Moonlight's lib directory MUST be FIRST for EGL/GLES/SDL2 dependencies
+        export LD_LIBRARY_PATH="/mnt/SDCARD/App/moonlight/lib:./lib:/lib:/config/lib:/mnt/SDCARD/miyoo/lib:/mnt/SDCARD/.tmp_update/lib:/mnt/SDCARD/.tmp_update/lib/parasyte"
 
         echo "LD_LIBRARY_PATH: $LD_LIBRARY_PATH" | tee -a debug.log
         echo "Starting app..." | tee -a debug.log

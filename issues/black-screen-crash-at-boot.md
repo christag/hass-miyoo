@@ -572,25 +572,57 @@ cat /dev/urandom > /dev/fb0  # Shows static on screen
 - **Expected Result**: App uses prebuilt SDL2/EGL/GLES libraries that have working MMIYOO support
 - **Status**: BUILD IN PROGRESS - Waiting for GitHub Actions
 
-## Current Status: SDL2 BUILD FROM SOURCE - IN PROGRESS
+### Attempt 20: Moonlight Clone Approach - BUILD USING MOONLIGHT'S PREBUILT LIBS (SUCCESS!!!)
+- **Date**: 2025-12-05
+- **Strategy**: Instead of building SDL2 from source, use XK9274's prebuilt Moonlight libraries that are KNOWN TO WORK on Miyoo
+- **Key Discovery**: The issue was NOT ABI incompatibility - it was **LD_LIBRARY_PATH ordering**!
+- **Implementation**:
+  1. Created minimal SDL2 test using XK9274's Moonlight prebuilt libraries
+  2. Used CMake with miyoomini toolchain (same as moonlight uses)
+  3. Used headers from XK9274's sdl2_miyoo fork (moonlight branch)
+- **The Fix**: In launch.sh, moonlight's lib directory MUST be **FIRST** in LD_LIBRARY_PATH:
+  ```bash
+  # CORRECT - moonlight's libs FIRST
+  export LD_LIBRARY_PATH="/mnt/SDCARD/App/moonlight/lib:./lib:/lib:/config/lib:/mnt/SDCARD/miyoo/lib:/mnt/SDCARD/.tmp_update/lib:/mnt/SDCARD/.tmp_update/lib/parasyte"
 
-**Root Cause (CONFIRMED via user testing + build analysis)**:
-- The prebuilt miyoomini toolchain has SDL 1.2 in sysroot, not SDL 2.0
-- Need to build SDL2 with MMIYOO driver from source (steward-fu's fork)
-- This ensures binary and SDL2 library are compiled together with same toolchain
+  # WRONG - our libs first (causes FPE at SDL_Init!)
+  export LD_LIBRARY_PATH="./lib:/mnt/SDCARD/miyoo/lib:/mnt/SDCARD/.tmp_update/lib:/mnt/SDCARD/.tmp_update/lib/parasyte"
+  ```
+- **Why This Works**:
+  - Moonlight's lib directory contains ALL required dependencies (EGL, GLES, json-c, etc.) that are ABI-compatible with each other
+  - The MMIYOO SDL2 driver depends on specific versions of EGL/GLES libraries
+  - When we load moonlight's libs first, all dependencies are resolved correctly
+  - When we load system libs first, incompatible versions cause Floating Point Exception
+- **Test Results**:
+  ```
+  SDL Renderer: Miyoo Mini
+    Flags: 10
+  SDL Video Driver: Mini
+  SDL2 initialized successfully
+  Screen: 640x480
+  Starting minimal rendering test loop...
+  Frame 0: Color 0 (R=255 G=255 B=255)
+  Frame 60: Color 1 (R=255 G=0 B=0)
+  Frame 120: Color 2 (R=0 G=255 B=0)
+  Frame 180: Color 3 (R=0 G=0 B=255)
+  Frame 240: Color 0 (R=255 G=255 B=255)
+  ```
+- **Visual Confirmation**: COLORS ARE VISIBLE ON MIYOO SCREEN!
+- **HACompanion Status**: Also displays correctly with the fixed LD_LIBRARY_PATH!
 
-**The Fix**:
-1. Download shauninman's miyoomini toolchain for the cross-compiler
-2. Clone steward-fu's SDL repo (has MMIYOO video driver)
-3. Build SDL2 with `--enable-video-mmiyoo` using the toolchain
-4. Build SDL2_ttf/SDL2_image against our built SDL2
-5. Bundle everything together
+## RESOLUTION: FIXED!
 
-**Why This Should Work**:
-- Binary compiled with miyoomini toolchain
-- SDL2 compiled with same toolchain + MMIYOO driver
-- SDL2_ttf/SDL2_image compiled against our SDL2
-- All libraries have matching ABI
-- MMIYOO driver is real, not a stub
+**Root Cause**: LD_LIBRARY_PATH ordering was incorrect. HACompanion's launch.sh had `./lib` first, which caused wrong library versions to be loaded. The MMIYOO SDL2 driver depends on specific EGL/GLES libraries from moonlight's lib directory.
 
-**Issue Status: OPEN - Building SDL2 from source with MMIYOO driver**
+**The Fix (Applied in dist/HACompanion/launch.sh)**:
+```bash
+# CRITICAL FIX: Use moonlight's lib directory FIRST for EGL, GLES, and SDL2 dependencies
+export LD_LIBRARY_PATH="/mnt/SDCARD/App/moonlight/lib:$(pwd)/lib:/lib:/config/lib:/mnt/SDCARD/miyoo/lib:/mnt/SDCARD/.tmp_update/lib:/mnt/SDCARD/.tmp_update/lib/parasyte"
+
+# Kill audio server like moonlight does (prevents audio conflicts)
+pkill -9 -f "audioserver" 2>/dev/null || true
+```
+
+**Issue Status: CLOSED - FIXED!**
+
+**Note**: This requires the Moonlight app to be installed on the Miyoo device, as HACompanion depends on its library set. Future work may bundle the required libraries directly.
