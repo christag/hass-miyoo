@@ -206,12 +206,15 @@ jobs:
         echo "=== Compiling SDL2 test ==="
 
         # Compile with the same flags moonlight uses
+        # --allow-shlib-undefined: SDL2 lib has many deps (EGL, GLES, etc) that
+        # aren't available at link time but will be on device via LD_LIBRARY_PATH
         ${CROSS_PREFIX}gcc \
           -o sdl_test/sdl_test \
           sdl_test/main.c \
           -I deps/include \
           -L deps/lib \
           -Wl,-rpath,'$$ORIGIN/../lib' \
+          -Wl,--allow-shlib-undefined \
           -lSDL2 \
           -Os -marm -mtune=cortex-a7 -mfpu=neon-vfpv4 \
           -march=armv7ve+simd -mfloat-abi=hard \
