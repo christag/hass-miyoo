@@ -537,19 +537,23 @@ cat /dev/urandom > /dev/fb0  # Shows static on screen
   - No `libSDL2*.so*` files found in toolchain
   - Build failed with: `unknown type name 'SDL_Window'` (SDL 1.2 doesn't have this)
 - **Solution**: Build SDL2 with MMIYOO driver from steward-fu's fork as part of the build process
-  - Clone: `https://github.com/steward-fu/sdl.git`
+  - Clone: `https://github.com/steward-fu/sdl2.git` (NOTE: **sdl2** not **sdl** - the sdl repo is SDL 1.2!)
   - Build from: `sdl2-mmiyoo/sdl2/` directory
   - Configure with: `--enable-video-mmiyoo` and various `--disable-video-*` flags
   - This gives us SDL2 with the actual MMIYOO driver compiled in
 - **Key Insight**: The miyoomini-toolchain provides the cross-compiler, but SDL2 needs to be built separately with MMIYOO support
 - **Build Changes**:
-  1. Clone steward-fu/sdl repo (has MMIYOO driver)
+  1. Clone steward-fu/sdl2 repo (has MMIYOO driver - NOT sdl which is SDL 1.2!)
   2. Build SDL2 with `--enable-video-mmiyoo`
   3. Install to `$DEPS` directory
   4. Build SDL2_ttf and SDL2_image against our built SDL2
   5. Bundle all libraries together
+- **Bug Fix (Attempt 19b)**: Initial commit used wrong repo `steward-fu/sdl` (SDL 1.2) instead of `steward-fu/sdl2` (SDL 2.0)
+  - Error: `cd: sdl2-mmiyoo/sdl2: No such file or directory`
+  - The `sdl` repo doesn't have an `sdl2/` subdirectory
+  - Fixed to use `https://github.com/steward-fu/sdl2.git`
 - **Expected Result**: Binary and SDL2 library both compiled with same toolchain = ABI compatibility
-- **Status**: BUILD IN PROGRESS - Waiting for GitHub Actions
+- **Status**: BUILD IN PROGRESS - Waiting for GitHub Actions (fixed repo URL)
 
 ## Current Status: SDL2 BUILD FROM SOURCE - IN PROGRESS
 

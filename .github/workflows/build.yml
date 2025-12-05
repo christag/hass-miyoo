@@ -71,8 +71,9 @@ jobs:
         ${CROSS_PREFIX}gcc --version
 
         # Build SDL2 with MMIYOO driver from steward-fu's fork
+        # IMPORTANT: steward-fu/sdl2 (not sdl) has SDL2 with MMIYOO driver
         echo "=== Building SDL2 with MMIYOO driver ==="
-        git clone --depth 1 https://github.com/steward-fu/sdl.git sdl2-mmiyoo
+        git clone --depth 1 https://github.com/steward-fu/sdl2.git sdl2-mmiyoo
         cd sdl2-mmiyoo/sdl2
 
         # Configure SDL2 for Miyoo Mini
@@ -201,8 +202,9 @@ jobs:
         ${CROSS_PREFIX}gcc --version
 
         # Build SDL2 with MMIYOO driver from steward-fu's fork
+        # IMPORTANT: steward-fu/sdl2 (not sdl) has SDL2 with MMIYOO driver
         echo "=== Building SDL2 with MMIYOO driver ==="
-        git clone --depth 1 https://github.com/steward-fu/sdl.git sdl2-mmiyoo
+        git clone --depth 1 https://github.com/steward-fu/sdl2.git sdl2-mmiyoo
         cd sdl2-mmiyoo/sdl2
 
         ./configure \
