@@ -51,17 +51,17 @@ jobs:
         echo "=== Moonlight libraries ==="
         ls -la deps/lib/
 
-    - name: Get SDL2 headers
+    - name: Get SDL2 headers from moonlight's SDL2 fork
       run: |
-        # Get SDL2 headers from the official SDL2 source
-        wget -q https://github.com/libsdl-org/SDL/releases/download/release-2.28.5/SDL2-2.28.5.tar.gz
-        tar xzf SDL2-2.28.5.tar.gz
+        # CRITICAL: Use headers from XK9274's sdl2_miyoo (moonlight branch)
+        # to ensure ABI compatibility with moonlight's prebuilt SDL2 library
+        git clone --depth 1 --branch moonlight https://github.com/XK9274/sdl2_miyoo.git
 
         # Create SDL2 subdirectory and copy headers there
         mkdir -p deps/include/SDL2
-        cp -r SDL2-2.28.5/include/* deps/include/SDL2/
+        cp -r sdl2_miyoo/include/* deps/include/SDL2/
 
-        echo "=== SDL2 headers ==="
+        echo "=== SDL2 headers from sdl2_miyoo (moonlight branch) ==="
         ls -la deps/include/SDL2/ | head -20
 
     - name: Create minimal SDL2 test app
@@ -235,7 +235,7 @@ jobs:
         # Copy moonlight's SDL2 library (the key ingredient!)
         cp deps/lib/libSDL2-2.0.so.0 release/sdl_test/lib/
 
-        # Create launch script
+        # Create launch script - use moonlight's libs (like moonlight does)
         cat > release/sdl_test/launch.sh << 'LAUNCH_EOF'
         #!/bin/sh
         export SDL_VIDEODRIVER=mmiyoo
@@ -243,7 +243,10 @@ jobs:
         export EGL_VIDEODRIVER=mmiyoo
 
         cd /mnt/SDCARD/App/sdl_test
-        export LD_LIBRARY_PATH=./lib:/lib:/config/lib:/mnt/SDCARD/miyoo/lib:/mnt/SDCARD/.tmp_update/lib:/mnt/SDCARD/.tmp_update/lib/parasyte
+
+        # Use moonlight's lib directory for all dependencies (EGL, GLES, json-c, etc)
+        # Our ./lib only contains SDL2, but moonlight/lib has ALL dependencies
+        export LD_LIBRARY_PATH=/mnt/SDCARD/App/moonlight/lib:./lib:/lib:/config/lib:/mnt/SDCARD/miyoo/lib:/mnt/SDCARD/.tmp_update/lib:/mnt/SDCARD/.tmp_update/lib/parasyte
 
         # Kill audio server like moonlight does
         pkill -9 -f "audioserver" 2>/dev/null || true
