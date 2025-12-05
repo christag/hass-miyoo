@@ -514,6 +514,21 @@ The root cause was a **GLIBC version mismatch**:
 3. **EGL/GLES libraries**: From same steward-fu/sdl2 prebuilt directory
 4. **LD_LIBRARY_PATH**: Must include `/config/lib` for system libraries
 
-**test_display successfully shows RED screen on physical Miyoo hardware!**
+**HACompanion successfully displays on Miyoo hardware!**
 
-Now applying the same toolchain fix to the main HACompanion build.
+Test results:
+```
+SDL Renderer: Miyoo Mini
+  Flags: 10
+  Texture formats: 2
+  Max texture: 640x480
+SDL Video Driver: Mini
+SDL2 initialized successfully
+Screen: 640x480
+Starting minimal rendering test loop...
+Frame 0: Color 0 (R=255 G=255 B=255)
+...883 frames rendered with color cycling...
+Cleanup complete
+```
+
+**Issue Status: CLOSED - BLACK SCREEN BUG FIXED!**
