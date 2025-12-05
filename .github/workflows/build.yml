@@ -57,57 +57,41 @@ jobs:
         sudo tar xf miyoomini-toolchain.tar.xz -C /opt
         ls -la /opt/
 
-    - name: Build SDL2 with MMIYOO driver
+    - name: Get SDL2 with MMIYOO driver (prebuilt)
       run: |
         set -ex
 
         # Set up toolchain paths
         export CROSS_PREFIX=/opt/miyoomini-toolchain/bin/arm-linux-gnueabihf-
-        export SYSROOT=/opt/miyoomini-toolchain/arm-linux-gnueabihf/sysroot
         export DEPS=$PWD/deps
-        mkdir -p $DEPS/lib $DEPS/include
+        mkdir -p $DEPS/lib $DEPS/include/SDL2
 
         echo "=== Toolchain Info ==="
         ${CROSS_PREFIX}gcc --version
 
-        # Build SDL2 with MMIYOO driver from steward-fu's fork
-        # IMPORTANT: steward-fu/sdl2 (not sdl) has SDL2 with MMIYOO driver
-        echo "=== Building SDL2 with MMIYOO driver ==="
+        # Get SDL2 with MMIYOO driver from steward-fu's fork
+        # Use PREBUILT libraries since building requires steward-fu's custom toolchain
+        echo "=== Getting prebuilt SDL2 with MMIYOO driver ==="
         git clone --depth 1 https://github.com/steward-fu/sdl2.git sdl2-mmiyoo
-        cd sdl2-mmiyoo/sdl2
 
-        # Configure SDL2 for Miyoo Mini
-        ./configure \
-          --host=arm-linux-gnueabihf \
-          --prefix=$DEPS \
-          CC="${CROSS_PREFIX}gcc" \
-          CXX="${CROSS_PREFIX}g++" \
-          --enable-video-mmiyoo \
-          --disable-video-opengl \
-          --disable-video-opengles \
-          --disable-video-x11 \
-          --disable-video-wayland \
-          --disable-video-vulkan \
-          --disable-video-kmsdrm \
-          --disable-video-dummy \
-          --disable-pulseaudio \
-          --disable-esd \
-          --disable-arts \
-          --disable-nas \
-          --disable-sndio \
-          --disable-jack \
-          --disable-diskaudio \
-          --disable-dummyaudio \
-          --enable-shared \
-          --disable-static
+        # Copy prebuilt libraries (compiled with steward-fu's toolchain, includes MMIYOO driver)
+        cp sdl2-mmiyoo/prebuilt/mini/libSDL2-2.0.so.0 $DEPS/lib/
+        cp sdl2-mmiyoo/prebuilt/mini/libEGL.so $DEPS/lib/
+        cp sdl2-mmiyoo/prebuilt/mini/libGLESv2.so $DEPS/lib/
 
-        make -j$(nproc)
-        make install
-        cd ../..
+        # Create symlinks for linker
+        cd $DEPS/lib
+        ln -sf libSDL2-2.0.so.0 libSDL2.so
+        ln -sf libSDL2-2.0.so.0 libSDL2-2.0.so
+        cd -
 
-        echo "=== SDL2 built ==="
-        ls -la $DEPS/lib/libSDL2*
-        ls -la $DEPS/include/SDL2/
+        # Copy SDL2 headers
+        cp sdl2-mmiyoo/sdl2/include/*.h $DEPS/include/SDL2/
+
+        echo "=== SDL2 libraries ==="
+        ls -la $DEPS/lib/libSDL2* $DEPS/lib/libEGL* $DEPS/lib/libGLES*
+        echo "=== SDL2 headers ==="
+        ls $DEPS/include/SDL2/ | head -10
 
     - name: Build test_display
       run: |
@@ -142,22 +126,14 @@ jobs:
         cp dist/test_display/launch.sh release/test_display/
         chmod +x release/test_display/launch.sh release/test_display/test_display
 
-        # Copy SDL2 library from our build
-        cp -L deps/lib/libSDL2-2.0.so* release/test_display/lib/ 2>/dev/null || \
-          cp -L deps/lib/libSDL2.so* release/test_display/lib/
+        # Copy SDL2 and EGL/GLES libraries (all required for MMIYOO driver)
+        cp -L deps/lib/libSDL2-2.0.so.0 release/test_display/lib/
+        cp -L deps/lib/libEGL.so release/test_display/lib/
+        cp -L deps/lib/libGLESv2.so release/test_display/lib/
 
-        # Ensure expected filename exists
-        cd release/test_display/lib/
-        if [ ! -f libSDL2-2.0.so.0 ]; then
-          # Find the actual library and create symlink
-          SDL_LIB=$(ls libSDL2*.so* 2>/dev/null | head -1)
-          if [ -n "$SDL_LIB" ]; then
-            cp "$SDL_LIB" libSDL2-2.0.so.0
-          fi
-        fi
-        ls -la
+        ls -la release/test_display/lib/
 
-        cd ../..
+        cd release
         zip -r test_display.zip test_display/
 
     - name: Upload test_display artifact
@@ -196,48 +172,32 @@ jobs:
         export CROSS_PREFIX=/opt/miyoomini-toolchain/bin/arm-linux-gnueabihf-
         export SYSROOT=/opt/miyoomini-toolchain/arm-linux-gnueabihf/sysroot
         export DEPS=$PWD/deps
-        mkdir -p $DEPS/lib $DEPS/include
+        mkdir -p $DEPS/lib $DEPS/include/SDL2
 
         echo "=== Toolchain Info ==="
         ${CROSS_PREFIX}gcc --version
 
-        # Build SDL2 with MMIYOO driver from steward-fu's fork
-        # IMPORTANT: steward-fu/sdl2 (not sdl) has SDL2 with MMIYOO driver
-        echo "=== Building SDL2 with MMIYOO driver ==="
+        # Get SDL2 with MMIYOO driver from steward-fu's fork
+        # Use PREBUILT libraries since building requires steward-fu's custom toolchain
+        echo "=== Getting prebuilt SDL2 with MMIYOO driver ==="
         git clone --depth 1 https://github.com/steward-fu/sdl2.git sdl2-mmiyoo
-        cd sdl2-mmiyoo/sdl2
 
-        ./configure \
-          --host=arm-linux-gnueabihf \
-          --prefix=$DEPS \
-          CC="${CROSS_PREFIX}gcc" \
-          CXX="${CROSS_PREFIX}g++" \
-          --enable-video-mmiyoo \
-          --disable-video-opengl \
-          --disable-video-opengles \
-          --disable-video-x11 \
-          --disable-video-wayland \
-          --disable-video-vulkan \
-          --disable-video-kmsdrm \
-          --disable-video-dummy \
-          --disable-pulseaudio \
-          --disable-esd \
-          --disable-arts \
-          --disable-nas \
-          --disable-sndio \
-          --disable-jack \
-          --disable-diskaudio \
-          --disable-dummyaudio \
-          --enable-shared \
-          --disable-static
+        # Copy prebuilt libraries (compiled with steward-fu's toolchain, includes MMIYOO driver)
+        cp sdl2-mmiyoo/prebuilt/mini/libSDL2-2.0.so.0 $DEPS/lib/
+        cp sdl2-mmiyoo/prebuilt/mini/libEGL.so $DEPS/lib/
+        cp sdl2-mmiyoo/prebuilt/mini/libGLESv2.so $DEPS/lib/
 
-        make -j$(nproc)
-        make install
-        cd ../..
+        # Create symlinks for linker
+        cd $DEPS/lib
+        ln -sf libSDL2-2.0.so.0 libSDL2.so
+        ln -sf libSDL2-2.0.so.0 libSDL2-2.0.so
+        cd -
 
-        echo "SDL2 built successfully:"
-        ls -la $DEPS/lib/libSDL2*
-        ls -la $DEPS/include/SDL2/
+        # Copy SDL2 headers
+        cp sdl2-mmiyoo/sdl2/include/*.h $DEPS/include/SDL2/
+
+        echo "SDL2 libraries:"
+        ls -la $DEPS/lib/libSDL2* $DEPS/lib/libEGL* $DEPS/lib/libGLES*
 
         # Set SDL2 paths for subsequent builds
         export SDL2_INC_PATH=$DEPS/include/SDL2
@@ -411,15 +371,10 @@ jobs:
         cp -r assets release/HACompanion/
         cp assets/icon.png release/HACompanion/icon.png
 
-        # Bundle SDL2 library from our build (ensures ABI compatibility)
-        cp -L deps/lib/libSDL2-2.0.so* release/HACompanion/lib/ 2>/dev/null || true
-        # Ensure expected filename exists
-        if [ ! -f release/HACompanion/lib/libSDL2-2.0.so.0 ]; then
-          SDL_LIB=$(ls deps/lib/libSDL2*.so* 2>/dev/null | head -1)
-          if [ -n "$SDL_LIB" ]; then
-            cp -L "$SDL_LIB" release/HACompanion/lib/libSDL2-2.0.so.0
-          fi
-        fi
+        # Bundle prebuilt SDL2 library with MMIYOO driver + EGL/GLES
+        cp -L deps/lib/libSDL2-2.0.so.0 release/HACompanion/lib/
+        cp -L deps/lib/libEGL.so release/HACompanion/lib/
+        cp -L deps/lib/libGLESv2.so release/HACompanion/lib/
 
         # Copy our built shared libraries (SDL2_ttf, SDL2_image, freetype)
         cp -L deps/lib/libSDL2_ttf-2.0.so.0 release/HACompanion/lib/ 2>/dev/null || \

@@ -530,30 +530,30 @@ cat /dev/urandom > /dev/fb0  # Shows static on screen
   - Ensures binary and library are compiled with the same compiler/settings
 - **Status**: SOLUTION IDENTIFIED - Need to modify GitHub Actions workflow
 
-### Attempt 19: Build SDL2 with MMIYOO Driver from Source (TESTING)
+### Attempt 19: Use Prebuilt SDL2 with MMIYOO Driver (TESTING)
 - **Date**: 2025-12-05
 - **Previous Issue**: Downloaded prebuilt toolchain from shauninman has SDL 1.2 in sysroot, not SDL 2.0!
   - `SDL.h` found at: `/opt/miyoomini-toolchain/arm-linux-gnueabihf/libc/usr/include/SDL/SDL.h` (SDL 1.2!)
   - No `libSDL2*.so*` files found in toolchain
   - Build failed with: `unknown type name 'SDL_Window'` (SDL 1.2 doesn't have this)
-- **Solution**: Build SDL2 with MMIYOO driver from steward-fu's fork as part of the build process
-  - Clone: `https://github.com/steward-fu/sdl2.git` (NOTE: **sdl2** not **sdl** - the sdl repo is SDL 1.2!)
-  - Build from: `sdl2-mmiyoo/sdl2/` directory
-  - Configure with: `--enable-video-mmiyoo` and various `--disable-video-*` flags
-  - This gives us SDL2 with the actual MMIYOO driver compiled in
-- **Key Insight**: The miyoomini-toolchain provides the cross-compiler, but SDL2 needs to be built separately with MMIYOO support
-- **Build Changes**:
-  1. Clone steward-fu/sdl2 repo (has MMIYOO driver - NOT sdl which is SDL 1.2!)
-  2. Build SDL2 with `--enable-video-mmiyoo`
-  3. Install to `$DEPS` directory
-  4. Build SDL2_ttf and SDL2_image against our built SDL2
-  5. Bundle all libraries together
-- **Bug Fix (Attempt 19b)**: Initial commit used wrong repo `steward-fu/sdl` (SDL 1.2) instead of `steward-fu/sdl2` (SDL 2.0)
-  - Error: `cd: sdl2-mmiyoo/sdl2: No such file or directory`
-  - The `sdl` repo doesn't have an `sdl2/` subdirectory
-  - Fixed to use `https://github.com/steward-fu/sdl2.git`
-- **Expected Result**: Binary and SDL2 library both compiled with same toolchain = ABI compatibility
-- **Status**: BUILD IN PROGRESS - Waiting for GitHub Actions (fixed repo URL)
+- **Attempt 19a**: Tried building SDL2 from source using steward-fu's fork
+  - Problem: Wrong repo (`steward-fu/sdl` is SDL 1.2, need `steward-fu/sdl2`)
+- **Attempt 19b**: Fixed to use `steward-fu/sdl2` repo
+  - Problem: The sdl2/ directory has no `configure` script (requires `./autogen.sh` first)
+  - steward-fu's build system requires his custom toolchain (`/opt/mini/`)
+- **Attempt 19c (CURRENT)**: Use PREBUILT libraries from steward-fu's repo
+  - The `steward-fu/sdl2` repo has `prebuilt/mini/` directory with ready-to-use libraries:
+    - `libSDL2-2.0.so.0` (5.7MB) - SDL2 with MMIYOO driver compiled in
+    - `libEGL.so` (55KB) - EGL for OpenGL ES
+    - `libGLESv2.so` (21MB) - SwiftShader software OpenGL ES renderer
+  - Use SDL2 headers from `sdl2/include/`
+  - Bundle all libraries with the app
+- **Why Prebuilt Libraries**:
+  - steward-fu compiled these with his custom toolchain (`/opt/mini/`)
+  - They have the MMIYOO driver built in
+  - We can link against them using shauninman's toolchain (compatible ABI - both glibc-based ARM)
+- **Expected Result**: App uses prebuilt SDL2/EGL/GLES libraries that have working MMIYOO support
+- **Status**: BUILD IN PROGRESS - Waiting for GitHub Actions
 
 ## Current Status: SDL2 BUILD FROM SOURCE - IN PROGRESS
 
