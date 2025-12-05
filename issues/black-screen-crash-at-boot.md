@@ -372,33 +372,53 @@ cat /dev/urandom > /dev/fb0  # Shows static on screen
 
 - **Status**: SOLUTION IDENTIFIED - Switching to mmiyoo toolchain in Attempt 17
 
-### Attempt 17: Use Prebuilt SDL2 from steward-fu/sdl2 (TESTING)
+### Attempt 17: Use ARM A-profile GCC 8.3 Toolchain with Prebuilt SDL2 (SUCCESS!)
 - **Date**: 2025-12-04
 - **Root Cause Analysis**:
   - Initial theory was ABI mismatch between Ubuntu cross-compiler and Miyoo's SDL2
   - Discovered `miyoocfw/toolchain` uses **musl libc** (not glibc!)
   - Prebuilt SDL2 libraries from `steward-fu/sdl2/prebuilt/mini/` are **glibc-based**
-  - Trying to link musl-compiled code with glibc libraries causes `undefined reference to 'memset@GLIBC_2.4'` etc.
-- **Key Discovery**: The prebuilt SDL2+EGL+GLES libraries in `steward-fu/sdl2` are glibc-based:
-  ```
-  libSDL2-2.0.so.0  (5.7MB) - has MMIYOO driver, glibc-based
-  libEGL.so          (55KB) - glibc-based
-  libGLESv2.so     (21.7MB) - glibc-based
-  ```
-  These are the SAME libraries that Moonlight uses and they WORK on Miyoo hardware.
-- **Solution**: Use Ubuntu's glibc-based cross-compiler (`arm-linux-gnueabihf-gcc`) with prebuilt glibc-based SDL2 libraries
-  - Both compiler and libraries use glibc = ABI compatible
-  - At runtime on Miyoo, device has glibc so everything works together
+  - Ubuntu 22.04's GCC 11 produces binaries requiring GLIBC_2.34, but Miyoo only has GLIBC_2.28
+- **Key Discovery**: Need to match GLIBC version between compiler and device:
+  - Miyoo device: GLIBC 2.28
+  - Ubuntu 22.04 GCC 11: Produces GLIBC 2.34 binaries = **FAILS**
+  - ARM A-profile GCC 8.3-2019.03: Produces GLIBC 2.28 binaries = **WORKS**
+- **Solution**: Use ARM's official A-profile toolchain (GCC 8.3-2019.03) which targets glibc 2.28
+  - Download: `https://developer.arm.com/-/media/Files/downloads/gnu-a/8.3-2019.03/binrel/gcc-arm-8.3-2019.03-x86_64-arm-linux-gnueabihf.tar.xz`
+  - This toolchain was specifically designed for embedded ARM systems
+  - Matches Miyoo's "GNU Toolchain for the A-profile Architecture 8.2-2018-08"
 - **Build Errors Fixed**:
   1. **Wrong compiler prefix**: Initially tried `arm-buildroot-linux-musleabi-` (musl) - WRONG
-  2. **Musl/glibc incompatibility**: Prebuilt SDL2 uses glibc, so musl compiler fails with GLIBC_2.4 errors
-  3. **Missing SDL_config.h**: Created from SDL_config_minimal.h
-  4. **Wrong SDL2 repo**: Initially tried `steward-fu/SDL` (SDL 1.2) instead of `steward-fu/sdl2` (SDL2)
+  2. **Musl/glibc incompatibility**: Prebuilt SDL2 uses glibc, so musl compiler fails
+  3. **GLIBC version mismatch**: Ubuntu 22.04 GCC 11 produces GLIBC_2.34 binaries, device has 2.28
+  4. **Missing system libraries at runtime**: Added `/config/lib` and moonlight's lib path
 - **Final Configuration**:
-  - `build-test-display` job: Ubuntu 20.04 + `arm-linux-gnueabihf-gcc` + prebuilt SDL2/EGL/GLES
-  - `build-miyoo-arm` job: Ubuntu 20.04 + `arm-linux-gnueabihf-gcc` + prebuilt SDL2/EGL/GLES
-  - All dependencies (freetype, SDL2_ttf, SDL2_image, curl, etc.) compiled with same glibc cross-compiler
-- **Status**: BUILD IN PROGRESS - Switched both jobs to Ubuntu glibc cross-compiler
+  - `build-test-display` job: Ubuntu 22.04 + ARM A-profile GCC 8.3 + prebuilt SDL2/EGL/GLES
+  - Compiler: `arm-linux-gnueabihf-gcc` from `gcc-arm-8.3-2019.03-x86_64-arm-linux-gnueabihf`
+  - LD_LIBRARY_PATH: `./lib:/config/lib:/mnt/SDCARD/App/moonlight/lib:/mnt/SDCARD/miyoo/lib:/mnt/SDCARD/.tmp_update/lib:/mnt/SDCARD/.tmp_update/lib/parasyte`
+- **Test Results**:
+  ```
+  === Minimal SDL2 Display Test ===
+  Expected: RED screen for 5 seconds
+
+  SDL_Init: OK
+  Video driver: Mini
+  SDL_CreateWindow: OK
+  Renderer: Miyoo Mini, Flags: 10
+
+  Starting render loop (300 frames @ ~60fps = 5 seconds)...
+  You should see a RED screen now!
+
+  Frame 0
+  Frame 60
+  Frame 120
+  Frame 180
+  Frame 240
+
+  Test complete. Cleaning up...
+  Done!
+  ```
+- **Status**: SUCCESS! - test_display runs correctly with MMIYOO driver. Now need to apply same toolchain to HACompanion build.
 
 ## Next Steps to Try
 
@@ -479,4 +499,21 @@ cat /dev/urandom > /dev/fb0  # Shows static on screen
 
 ## Resolution
 
-**TBD** - Currently blocked on SDL2 MMIYOO driver availability. Next attempt will be XK9274/sdl2_miyoo (vanilla branch).
+**SOLVED in Attempt 17!**
+
+The root cause was a **GLIBC version mismatch**:
+- Miyoo device has GLIBC 2.28
+- Ubuntu 22.04's GCC 11 produces binaries requiring GLIBC 2.34
+- This caused "GLIBC_2.34 not found" errors at runtime
+
+**The fix**: Use ARM's official A-profile toolchain (GCC 8.3-2019.03) which targets glibc 2.28.
+
+**Key components for a working Miyoo SDL2 app**:
+1. **Compiler**: ARM A-profile GCC 8.3-2019.03 (targets glibc 2.28)
+2. **SDL2 library**: Prebuilt from `steward-fu/sdl2/prebuilt/mini/` with MMIYOO driver
+3. **EGL/GLES libraries**: From same steward-fu/sdl2 prebuilt directory
+4. **LD_LIBRARY_PATH**: Must include `/config/lib` for system libraries
+
+**test_display successfully shows RED screen on physical Miyoo hardware!**
+
+Now applying the same toolchain fix to the main HACompanion build.

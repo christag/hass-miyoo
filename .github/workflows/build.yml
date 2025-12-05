@@ -154,6 +154,23 @@ jobs:
         cd $DEPS/lib
         ln -sf libSDL2-2.0.so.0 libSDL2.so
 
+        # Create pkg-config file for SDL2 (needed by SDL2_ttf and SDL2_image)
+        mkdir -p $DEPS/lib/pkgconfig
+        cat > $DEPS/lib/pkgconfig/sdl2.pc << 'PKGCONFIG_EOF'
+        prefix=/deps
+        exec_prefix=${prefix}
+        libdir=${exec_prefix}/lib
+        includedir=${prefix}/include
+
+        Name: sdl2
+        Description: Simple DirectMedia Layer
+        Version: 2.0.20
+        Libs: -L${libdir} -lSDL2
+        Cflags: -I${includedir}/SDL2
+        PKGCONFIG_EOF
+        # Fix the prefix path
+        sed -i "s|prefix=/deps|prefix=$DEPS|g" $DEPS/lib/pkgconfig/sdl2.pc
+
         ls -la $DEPS/lib/
         echo "SDL2 prebuilt libraries with MMIYOO driver ready"
 
