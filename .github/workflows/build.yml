@@ -19,38 +19,34 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-    - name: Build SDL2 with MMIYOO driver
+    - name: Get SDL2 prebuilt libraries with MMIYOO driver
       run: |
         set -ex
         export PATH="/opt/miyoo/bin:$PATH"
-        export SYSROOT=/opt/miyoo/arm-buildroot-linux-musleabi/sysroot
         export DEPS=$GITHUB_WORKSPACE/deps
-        mkdir -p $DEPS/lib $DEPS/include
+        mkdir -p $DEPS/lib $DEPS/include/SDL2
 
         # Show toolchain info
         echo "=== Toolchain Info ==="
         arm-buildroot-linux-musleabi-gcc --version
 
-        # Clone SDL2 with MMIYOO driver from steward-fu's SDL2 fork
-        # NOTE: steward-fu/sdl2 (lowercase) is the SDL2 port, NOT steward-fu/SDL (SDL1)
+        # Clone steward-fu/sdl2 which has prebuilt libraries for Miyoo Mini
         git clone --depth 1 https://github.com/steward-fu/sdl2.git SDL2-mmiyoo
-        cd SDL2-mmiyoo
 
-        # Configure SDL2 for Miyoo Mini Plus
-        ./configure --host=arm-buildroot-linux-musleabi --prefix=$DEPS \
-          --enable-shared --disable-static \
-          --enable-video-mmiyoo \
-          --disable-video-opengl --disable-video-opengles \
-          --disable-video-wayland --disable-video-x11 \
-          --disable-pulseaudio --disable-alsa --disable-jack \
-          --disable-video-vulkan --disable-dbus \
-          CFLAGS="--sysroot=$SYSROOT" \
-          LDFLAGS="--sysroot=$SYSROOT"
-        make -j$(nproc)
-        make install
+        # Copy prebuilt libraries (already compiled for Miyoo Mini)
+        cp SDL2-mmiyoo/prebuilt/mini/libSDL2-2.0.so.0 $DEPS/lib/
+        cp SDL2-mmiyoo/prebuilt/mini/libEGL.so $DEPS/lib/
+        cp SDL2-mmiyoo/prebuilt/mini/libGLESv2.so $DEPS/lib/
 
-        ls -la $DEPS/lib/libSDL2*
-        echo "SDL2 with MMIYOO driver built successfully"
+        # Copy SDL2 headers
+        cp SDL2-mmiyoo/sdl2/include/*.h $DEPS/include/SDL2/
+
+        # Create libSDL2.so symlink for linking
+        cd $DEPS/lib
+        ln -sf libSDL2-2.0.so.0 libSDL2.so
+
+        ls -la $DEPS/lib/
+        echo "SDL2 prebuilt libraries with MMIYOO driver ready"
 
     - name: Build test_display with Miyoo toolchain
       run: |
@@ -84,8 +80,10 @@ jobs:
         cp dist/test_display/launch.sh release/test_display/
         chmod +x release/test_display/launch.sh release/test_display/test_display
 
-        # Bundle the SDL2 library we built (with MMIYOO driver)
+        # Bundle ALL prebuilt libraries (SDL2 + EGL + GLES - same as Moonlight uses)
         cp $DEPS/lib/libSDL2-2.0.so.0 release/test_display/lib/
+        cp $DEPS/lib/libEGL.so release/test_display/lib/
+        cp $DEPS/lib/libGLESv2.so release/test_display/lib/
         ls -la release/test_display/lib/
 
         cd release
@@ -127,38 +125,30 @@ jobs:
         # Find SDL2
         find /opt/miyoo -name "libSDL2*.so*" 2>/dev/null | head -5 || true
 
-    - name: Build SDL2 with MMIYOO driver
+    - name: Get SDL2 prebuilt libraries with MMIYOO driver
       run: |
         set -ex
         export PATH="/opt/miyoo/bin:$PATH"
-        export SYSROOT=/opt/miyoo/arm-buildroot-linux-musleabi/sysroot
         export DEPS=$GITHUB_WORKSPACE/deps
-        mkdir -p $DEPS/lib $DEPS/include
+        mkdir -p $DEPS/lib $DEPS/include/SDL2
 
-        # Show toolchain info
-        echo "=== Miyoo Toolchain Info ==="
-        arm-buildroot-linux-musleabi-gcc --version
-
-        # Clone SDL2 with MMIYOO driver from steward-fu's SDL2 fork
-        # NOTE: steward-fu/sdl2 (lowercase) is the SDL2 port, NOT steward-fu/SDL (SDL1)
+        # Clone steward-fu/sdl2 which has prebuilt libraries for Miyoo Mini
         git clone --depth 1 https://github.com/steward-fu/sdl2.git SDL2-mmiyoo
-        cd SDL2-mmiyoo
 
-        # Configure SDL2 for Miyoo Mini Plus
-        ./configure --host=arm-buildroot-linux-musleabi --prefix=$DEPS \
-          --enable-shared --disable-static \
-          --enable-video-mmiyoo \
-          --disable-video-opengl --disable-video-opengles \
-          --disable-video-wayland --disable-video-x11 \
-          --disable-pulseaudio --disable-alsa --disable-jack \
-          --disable-video-vulkan --disable-dbus \
-          CFLAGS="--sysroot=$SYSROOT" \
-          LDFLAGS="--sysroot=$SYSROOT"
-        make -j$(nproc)
-        make install
+        # Copy prebuilt libraries (already compiled for Miyoo Mini)
+        cp SDL2-mmiyoo/prebuilt/mini/libSDL2-2.0.so.0 $DEPS/lib/
+        cp SDL2-mmiyoo/prebuilt/mini/libEGL.so $DEPS/lib/
+        cp SDL2-mmiyoo/prebuilt/mini/libGLESv2.so $DEPS/lib/
 
-        ls -la $DEPS/lib/libSDL2*
-        echo "SDL2 with MMIYOO driver built successfully"
+        # Copy SDL2 headers
+        cp SDL2-mmiyoo/sdl2/include/*.h $DEPS/include/SDL2/
+
+        # Create libSDL2.so symlink for linking
+        cd $DEPS/lib
+        ln -sf libSDL2-2.0.so.0 libSDL2.so
+
+        ls -la $DEPS/lib/
+        echo "SDL2 prebuilt libraries with MMIYOO driver ready"
 
     - name: Build cJSON and SQLite
       run: |
@@ -321,11 +311,13 @@ jobs:
         cp -r assets release/HACompanion/
         cp assets/icon.png release/HACompanion/icon.png
 
-        # Bundle our built SDL2 library with MMIYOO video driver support
+        # Bundle ALL prebuilt libraries (SDL2 + EGL + GLES - same as Moonlight uses)
         cp $DEPS/lib/libSDL2-2.0.so.0 release/HACompanion/lib/ || true
-        echo "Bundled SDL2 library with MMIYOO video driver"
+        cp $DEPS/lib/libEGL.so release/HACompanion/lib/ || true
+        cp $DEPS/lib/libGLESv2.so release/HACompanion/lib/ || true
+        echo "Bundled SDL2 + EGL + GLES libraries with MMIYOO video driver"
 
-        # Bundle all shared SDL2 libraries we built
+        # Bundle all other shared SDL2 libraries we built
         cp $DEPS/lib/libSDL2_ttf-2.0.so.0 release/HACompanion/lib/ || true
         cp $DEPS/lib/libSDL2_image-2.0.so.0 release/HACompanion/lib/ || true
         cp $DEPS/lib/libfreetype.so.6 release/HACompanion/lib/ || true
