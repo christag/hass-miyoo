@@ -1,5 +1,6 @@
 #include "audio.h"
 #include <math.h>
+#include <stdio.h>
 #include <stdlib.h>
 
 #define SAMPLE_RATE 22050
