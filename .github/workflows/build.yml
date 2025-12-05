@@ -57,40 +57,73 @@ jobs:
         sudo tar xf miyoomini-toolchain.tar.xz -C /opt
         ls -la /opt/
 
-    - name: Build test_display using Miyoo toolchain
+    - name: Build SDL2 with MMIYOO driver
       run: |
         set -ex
 
         # Set up toolchain paths
         export CROSS_PREFIX=/opt/miyoomini-toolchain/bin/arm-linux-gnueabihf-
         export SYSROOT=/opt/miyoomini-toolchain/arm-linux-gnueabihf/sysroot
+        export DEPS=$PWD/deps
+        mkdir -p $DEPS/lib $DEPS/include
 
         echo "=== Toolchain Info ==="
         ${CROSS_PREFIX}gcc --version
 
-        # Find SDL2 in sysroot
-        echo "=== Finding SDL2 ==="
-        find /opt/miyoomini-toolchain -name "libSDL2*" 2>/dev/null | head -10 || echo "SDL2 not found"
-        find /opt/miyoomini-toolchain -name "SDL.h" 2>/dev/null | head -5 || echo "SDL.h not found"
+        # Build SDL2 with MMIYOO driver from steward-fu's fork
+        echo "=== Building SDL2 with MMIYOO driver ==="
+        git clone --depth 1 https://github.com/steward-fu/sdl.git sdl2-mmiyoo
+        cd sdl2-mmiyoo/sdl2
 
-        # Set SDL2 paths
-        SDL2_LIB=$(find /opt/miyoomini-toolchain -name "libSDL2*.so*" -type f 2>/dev/null | head -1)
-        SDL_LIBDIR=$(dirname "$SDL2_LIB")
-        SDL_H=$(find /opt/miyoomini-toolchain -name "SDL.h" 2>/dev/null | head -1)
-        SDL_INCLUDE=$(dirname "$SDL_H")
+        # Configure SDL2 for Miyoo Mini
+        ./configure \
+          --host=arm-linux-gnueabihf \
+          --prefix=$DEPS \
+          CC="${CROSS_PREFIX}gcc" \
+          CXX="${CROSS_PREFIX}g++" \
+          --enable-video-mmiyoo \
+          --disable-video-opengl \
+          --disable-video-opengles \
+          --disable-video-x11 \
+          --disable-video-wayland \
+          --disable-video-vulkan \
+          --disable-video-kmsdrm \
+          --disable-video-dummy \
+          --disable-pulseaudio \
+          --disable-esd \
+          --disable-arts \
+          --disable-nas \
+          --disable-sndio \
+          --disable-jack \
+          --disable-diskaudio \
+          --disable-dummyaudio \
+          --enable-shared \
+          --disable-static
 
-        echo "SDL_LIBDIR: $SDL_LIBDIR"
-        echo "SDL_INCLUDE: $SDL_INCLUDE"
+        make -j$(nproc)
+        make install
+        cd ../..
 
-        # Compile test_display using toolchain SDL2
+        echo "=== SDL2 built ==="
+        ls -la $DEPS/lib/libSDL2*
+        ls -la $DEPS/include/SDL2/
+
+    - name: Build test_display
+      run: |
+        set -ex
+
+        export CROSS_PREFIX=/opt/miyoomini-toolchain/bin/arm-linux-gnueabihf-
+        export DEPS=$PWD/deps
+
+        # Compile test_display using our built SDL2
         ${CROSS_PREFIX}gcc \
           -march=armv7-a -mtune=cortex-a7 -mfpu=neon-vfpv4 -mfloat-abi=hard \
-          -I$SDL_INCLUDE \
+          -I$DEPS/include/SDL2 \
           -o test_display \
           src/test_display.c \
-          -L$SDL_LIBDIR \
+          -L$DEPS/lib \
           -Wl,-rpath,/mnt/SDCARD/App/test_display/lib \
-          -lSDL2
+          -lSDL2 -lpthread -ldl
 
         echo "=== Binary info ==="
         ls -la test_display
@@ -98,9 +131,6 @@ jobs:
 
         # Check what libraries the binary needs
         ${CROSS_PREFIX}readelf -d test_display | grep NEEDED || true
-
-        # Save SDL2 library path for packaging
-        echo "$SDL_LIBDIR" > SDL2_LIB_PATH.txt
 
     - name: Create test package
       run: |
@@ -111,16 +141,18 @@ jobs:
         cp dist/test_display/launch.sh release/test_display/
         chmod +x release/test_display/launch.sh release/test_display/test_display
 
-        # Copy SDL2 library from toolchain
-        SDL_LIBDIR=$(cat SDL2_LIB_PATH.txt)
-        if [ -d "$SDL_LIBDIR" ]; then
-          cp -L $SDL_LIBDIR/libSDL2*.so* release/test_display/lib/ 2>/dev/null || true
-        fi
+        # Copy SDL2 library from our build
+        cp -L deps/lib/libSDL2-2.0.so* release/test_display/lib/ 2>/dev/null || \
+          cp -L deps/lib/libSDL2.so* release/test_display/lib/
 
-        # Rename to expected name if needed
+        # Ensure expected filename exists
         cd release/test_display/lib/
-        if [ -f libSDL2.so ] && [ ! -f libSDL2-2.0.so.0 ]; then
-          cp libSDL2.so libSDL2-2.0.so.0 2>/dev/null || true
+        if [ ! -f libSDL2-2.0.so.0 ]; then
+          # Find the actual library and create symlink
+          SDL_LIB=$(ls libSDL2*.so* 2>/dev/null | head -1)
+          if [ -n "$SDL_LIB" ]; then
+            cp "$SDL_LIB" libSDL2-2.0.so.0
+          fi
         fi
         ls -la
 
@@ -168,16 +200,46 @@ jobs:
         echo "=== Toolchain Info ==="
         ${CROSS_PREFIX}gcc --version
 
-        # Find SDL2 paths
-        echo "=== Finding SDL2 ==="
-        SDL2_SO=$(find /opt/miyoomini-toolchain -name "libSDL2*.so*" -type f 2>/dev/null | head -1)
-        SDL2_LIB_PATH=$(dirname "$SDL2_SO")
-        SDL_H=$(find /opt/miyoomini-toolchain -name "SDL.h" 2>/dev/null | head -1)
-        SDL2_INC_PATH=$(dirname "$SDL_H")
+        # Build SDL2 with MMIYOO driver from steward-fu's fork
+        echo "=== Building SDL2 with MMIYOO driver ==="
+        git clone --depth 1 https://github.com/steward-fu/sdl.git sdl2-mmiyoo
+        cd sdl2-mmiyoo/sdl2
 
-        echo "SDL2 library path: $SDL2_LIB_PATH"
-        echo "SDL2 include path: $SDL2_INC_PATH"
-        ls -la $SDL2_LIB_PATH/libSDL2* 2>/dev/null || echo "No SDL2 libs found"
+        ./configure \
+          --host=arm-linux-gnueabihf \
+          --prefix=$DEPS \
+          CC="${CROSS_PREFIX}gcc" \
+          CXX="${CROSS_PREFIX}g++" \
+          --enable-video-mmiyoo \
+          --disable-video-opengl \
+          --disable-video-opengles \
+          --disable-video-x11 \
+          --disable-video-wayland \
+          --disable-video-vulkan \
+          --disable-video-kmsdrm \
+          --disable-video-dummy \
+          --disable-pulseaudio \
+          --disable-esd \
+          --disable-arts \
+          --disable-nas \
+          --disable-sndio \
+          --disable-jack \
+          --disable-diskaudio \
+          --disable-dummyaudio \
+          --enable-shared \
+          --disable-static
+
+        make -j$(nproc)
+        make install
+        cd ../..
+
+        echo "SDL2 built successfully:"
+        ls -la $DEPS/lib/libSDL2*
+        ls -la $DEPS/include/SDL2/
+
+        # Set SDL2 paths for subsequent builds
+        export SDL2_INC_PATH=$DEPS/include/SDL2
+        export SDL2_LIB_PATH=$DEPS/lib
 
         # Build cJSON (static)
         echo "=== Building cJSON ==="
@@ -347,19 +409,17 @@ jobs:
         cp -r assets release/HACompanion/
         cp assets/icon.png release/HACompanion/icon.png
 
-        # Bundle SDL2 library from toolchain (ensures ABI compatibility)
-        SDL2_LIB_PATH=$(cat SDL2_LIB_PATH.txt)
-        if [ -n "$SDL2_LIB_PATH" ]; then
-          cp -L $SDL2_LIB_PATH/libSDL2-2.0.so.0 release/HACompanion/lib/ 2>/dev/null || \
-            cp -L $SDL2_LIB_PATH/libSDL2.so release/HACompanion/lib/libSDL2-2.0.so.0 2>/dev/null || \
-            find $SDL2_LIB_PATH -name "libSDL2*.so*" -exec cp -L {} release/HACompanion/lib/ \;
+        # Bundle SDL2 library from our build (ensures ABI compatibility)
+        cp -L deps/lib/libSDL2-2.0.so* release/HACompanion/lib/ 2>/dev/null || true
+        # Ensure expected filename exists
+        if [ ! -f release/HACompanion/lib/libSDL2-2.0.so.0 ]; then
+          SDL_LIB=$(ls deps/lib/libSDL2*.so* 2>/dev/null | head -1)
+          if [ -n "$SDL_LIB" ]; then
+            cp -L "$SDL_LIB" release/HACompanion/lib/libSDL2-2.0.so.0
+          fi
         fi
 
-        # Copy EGL/GLES if present in toolchain
-        find /opt/miyoomini-toolchain -name "libEGL.so*" -type f 2>/dev/null | head -1 | xargs -I{} cp -L {} release/HACompanion/lib/ 2>/dev/null || true
-        find /opt/miyoomini-toolchain -name "libGLESv2.so*" -type f 2>/dev/null | head -1 | xargs -I{} cp -L {} release/HACompanion/lib/ 2>/dev/null || true
-
-        # Copy our built shared libraries
+        # Copy our built shared libraries (SDL2_ttf, SDL2_image, freetype)
         cp -L deps/lib/libSDL2_ttf-2.0.so.0 release/HACompanion/lib/ 2>/dev/null || \
           cp -L deps/lib/libSDL2_ttf.so.0 release/HACompanion/lib/libSDL2_ttf-2.0.so.0 2>/dev/null || \
           cp -L deps/lib/libSDL2_ttf.so release/HACompanion/lib/libSDL2_ttf-2.0.so.0

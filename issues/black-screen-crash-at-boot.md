@@ -530,19 +530,46 @@ cat /dev/urandom > /dev/fb0  # Shows static on screen
   - Ensures binary and library are compiled with the same compiler/settings
 - **Status**: SOLUTION IDENTIFIED - Need to modify GitHub Actions workflow
 
-## Current Status: ABI MISMATCH - FIX IN PROGRESS
+### Attempt 19: Build SDL2 with MMIYOO Driver from Source (TESTING)
+- **Date**: 2025-12-05
+- **Previous Issue**: Downloaded prebuilt toolchain from shauninman has SDL 1.2 in sysroot, not SDL 2.0!
+  - `SDL.h` found at: `/opt/miyoomini-toolchain/arm-linux-gnueabihf/libc/usr/include/SDL/SDL.h` (SDL 1.2!)
+  - No `libSDL2*.so*` files found in toolchain
+  - Build failed with: `unknown type name 'SDL_Window'` (SDL 1.2 doesn't have this)
+- **Solution**: Build SDL2 with MMIYOO driver from steward-fu's fork as part of the build process
+  - Clone: `https://github.com/steward-fu/sdl.git`
+  - Build from: `sdl2-mmiyoo/sdl2/` directory
+  - Configure with: `--enable-video-mmiyoo` and various `--disable-video-*` flags
+  - This gives us SDL2 with the actual MMIYOO driver compiled in
+- **Key Insight**: The miyoomini-toolchain provides the cross-compiler, but SDL2 needs to be built separately with MMIYOO support
+- **Build Changes**:
+  1. Clone steward-fu/sdl repo (has MMIYOO driver)
+  2. Build SDL2 with `--enable-video-mmiyoo`
+  3. Install to `$DEPS` directory
+  4. Build SDL2_ttf and SDL2_image against our built SDL2
+  5. Bundle all libraries together
+- **Expected Result**: Binary and SDL2 library both compiled with same toolchain = ABI compatibility
+- **Status**: BUILD IN PROGRESS - Waiting for GitHub Actions
 
-**Root Cause (CONFIRMED via user testing)**:
-- The binary is compiled with one toolchain (ARM A-profile GCC 8.3)
-- The SDL2 library is compiled with a different toolchain (steward-fu's custom build)
-- Even though GLIBC versions match, the ABI between binary and library is incompatible
-- SDL function calls succeed, but rendering operations produce no visible output
+## Current Status: SDL2 BUILD FROM SOURCE - IN PROGRESS
+
+**Root Cause (CONFIRMED via user testing + build analysis)**:
+- The prebuilt miyoomini toolchain has SDL 1.2 in sysroot, not SDL 2.0
+- Need to build SDL2 with MMIYOO driver from source (steward-fu's fork)
+- This ensures binary and SDL2 library are compiled together with same toolchain
 
 **The Fix**:
-Use `shauninman/union-miyoomini-toolchain` Docker image which:
-1. Has a consistent toolchain for all compilation
-2. Includes SDL2 already built into the sysroot
-3. Ensures binary and libraries are compiled together
-4. Is the same toolchain used by MinUI and other working Miyoo apps
+1. Download shauninman's miyoomini toolchain for the cross-compiler
+2. Clone steward-fu's SDL repo (has MMIYOO video driver)
+3. Build SDL2 with `--enable-video-mmiyoo` using the toolchain
+4. Build SDL2_ttf/SDL2_image against our built SDL2
+5. Bundle everything together
 
-**Issue Status: OPEN - Implementing Docker-based toolchain**
+**Why This Should Work**:
+- Binary compiled with miyoomini toolchain
+- SDL2 compiled with same toolchain + MMIYOO driver
+- SDL2_ttf/SDL2_image compiled against our SDL2
+- All libraries have matching ABI
+- MMIYOO driver is real, not a stub
+
+**Issue Status: OPEN - Building SDL2 from source with MMIYOO driver**
