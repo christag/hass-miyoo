@@ -497,38 +497,52 @@ cat /dev/urandom > /dev/fb0  # Shows static on screen
 6. **Don't over-engineer initialization** - Standard SDL2 patterns work if the driver exists
 7. **Test in isolation** - SKIP_NETWORK_TEST mode helps separate SDL from network issues
 
-## Resolution
+### Attempt 18: Device Testing Reveals Bug NOT Fixed (FAILED)
+- **Date**: 2025-12-04
+- **Critical Discovery**: User tested on actual Miyoo hardware and reported:
+  - "i see nothing on screen"
+  - "the test display stayed up for a few seconds but i didnt see anything, then it quit after about 8-10 seconds"
+  - "black screen; nothing happens" (when launching HACompanion)
+- **What Logs Showed vs Reality**:
+  - Logs: "SDL Renderer: Miyoo Mini", "Frame 0", "Frame 60", etc. - all appears successful
+  - Reality: Physical screen remains BLACK - no visual output whatsoever
+- **Library Swap Testing**:
+  - Tried Moonlight's SDL2 (5.89MB): App crashed immediately (ABI incompatibility)
+  - Tried OnionOS parasyte SDL2 (5.21MB): Black screen persists
+  - Tried removing LD_LIBRARY_PATH entirely: Black screen persists
+- **Root Cause Analysis**:
+  - Our binary was compiled with ARM A-profile GCC 8.3
+  - steward-fu's prebuilt SDL2 was compiled with a DIFFERENT toolchain
+  - The binary and SDL2 library are NOT ABI-compatible
+  - SDL reports success because function calls work, but internal struct layouts may differ
+- **Key Discovery from XK9274/miyoo_sdl2_benchmarks**:
+  ```makefile
+  CROSS_PREFIX  ?= /opt/miyoomini-toolchain/usr/bin/arm-linux-gnueabihf-
+  SYSROOT       ?= /opt/miyoomini-toolchain/usr/arm-linux-gnueabihf/sysroot
+  SDL_INCLUDE   := $(SYSROOT)/usr/include/SDL2
+  SDL_LIBDIR    := $(SYSROOT)/usr/lib
+  ```
+  - They use a Docker-based toolchain with SDL2 **built into the sysroot**
+  - The binary and SDL2 library are compiled TOGETHER, ensuring ABI compatibility
+- **Solution Identified**: Use `shauninman/union-miyoomini-toolchain` Docker image
+  - This is the official Miyoo Mini toolchain used by MinUI and other working apps
+  - Has SDL2 already compiled in the sysroot
+  - Ensures binary and library are compiled with the same compiler/settings
+- **Status**: SOLUTION IDENTIFIED - Need to modify GitHub Actions workflow
 
-**SOLVED in Attempt 17!**
+## Current Status: ABI MISMATCH - FIX IN PROGRESS
 
-The root cause was a **GLIBC version mismatch**:
-- Miyoo device has GLIBC 2.28
-- Ubuntu 22.04's GCC 11 produces binaries requiring GLIBC 2.34
-- This caused "GLIBC_2.34 not found" errors at runtime
+**Root Cause (CONFIRMED via user testing)**:
+- The binary is compiled with one toolchain (ARM A-profile GCC 8.3)
+- The SDL2 library is compiled with a different toolchain (steward-fu's custom build)
+- Even though GLIBC versions match, the ABI between binary and library is incompatible
+- SDL function calls succeed, but rendering operations produce no visible output
 
-**The fix**: Use ARM's official A-profile toolchain (GCC 8.3-2019.03) which targets glibc 2.28.
+**The Fix**:
+Use `shauninman/union-miyoomini-toolchain` Docker image which:
+1. Has a consistent toolchain for all compilation
+2. Includes SDL2 already built into the sysroot
+3. Ensures binary and libraries are compiled together
+4. Is the same toolchain used by MinUI and other working Miyoo apps
 
-**Key components for a working Miyoo SDL2 app**:
-1. **Compiler**: ARM A-profile GCC 8.3-2019.03 (targets glibc 2.28)
-2. **SDL2 library**: Prebuilt from `steward-fu/sdl2/prebuilt/mini/` with MMIYOO driver
-3. **EGL/GLES libraries**: From same steward-fu/sdl2 prebuilt directory
-4. **LD_LIBRARY_PATH**: Must include `/config/lib` for system libraries
-
-**HACompanion successfully displays on Miyoo hardware!**
-
-Test results:
-```
-SDL Renderer: Miyoo Mini
-  Flags: 10
-  Texture formats: 2
-  Max texture: 640x480
-SDL Video Driver: Mini
-SDL2 initialized successfully
-Screen: 640x480
-Starting minimal rendering test loop...
-Frame 0: Color 0 (R=255 G=255 B=255)
-...883 frames rendered with color cycling...
-Cleanup complete
-```
-
-**Issue Status: CLOSED - BLACK SCREEN BUG FIXED!**
+**Issue Status: OPEN - Implementing Docker-based toolchain**
