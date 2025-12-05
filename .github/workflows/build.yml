@@ -216,6 +216,8 @@ jobs:
         cd ..
 
         # SDL2_ttf - link against prebuilt SDL2
+        # Note: Must disable sample programs because they try to link against SDL2
+        # which has undefined EGL/MI_* symbols (resolved at runtime, not link time)
         wget -q https://github.com/libsdl-org/SDL_ttf/releases/download/release-2.20.2/SDL2_ttf-2.20.2.tar.gz
         tar xzf SDL2_ttf-2.20.2.tar.gz
         cd SDL2_ttf-2.20.2
@@ -224,12 +226,16 @@ jobs:
           --enable-shared --disable-static \
           --disable-freetype-builtin \
           --disable-harfbuzz \
+          --disable-sdltest \
           CFLAGS="-I$DEPS/include/SDL2" \
-          LDFLAGS="-L$DEPS/lib" \
+          LDFLAGS="-L$DEPS/lib -Wl,--allow-shlib-undefined" \
           FREETYPE_CFLAGS="-I$DEPS/include/freetype2" \
           FREETYPE_LIBS="-L$DEPS/lib -lfreetype"
-        make -j$(nproc)
-        make install
+        # Only build the library, skip sample programs (glfont, showfont)
+        make -j$(nproc) -C . lib
+        # Install manually to avoid sample program issues
+        cp -a .libs/libSDL2_ttf*.so* $DEPS/lib/
+        cp SDL_ttf.h $DEPS/include/SDL2/
         ls -la $DEPS/lib/libSDL2_ttf*
         echo "Freetype and SDL2_ttf complete"
 
@@ -239,17 +245,22 @@ jobs:
         export DEPS=$GITHUB_WORKSPACE/deps
 
         # SDL2_image - link against prebuilt SDL2
+        # Note: Same issue as SDL2_ttf - sample programs fail to link
         wget -q https://github.com/libsdl-org/SDL_image/releases/download/release-2.6.3/SDL2_image-2.6.3.tar.gz
         tar xzf SDL2_image-2.6.3.tar.gz
         cd SDL2_image-2.6.3
         export PKG_CONFIG_PATH=$DEPS/lib/pkgconfig:$PKG_CONFIG_PATH
         ./configure --host=arm-linux-gnueabihf --prefix=$DEPS \
           --enable-shared --disable-static \
+          --disable-sdltest \
           --disable-jpg --disable-png-shared --disable-webp --disable-tif \
           CFLAGS="-I$DEPS/include/SDL2" \
-          LDFLAGS="-L$DEPS/lib"
-        make -j$(nproc)
-        make install
+          LDFLAGS="-L$DEPS/lib -Wl,--allow-shlib-undefined"
+        # Only build the library, skip sample programs
+        make -j$(nproc) -C . lib || make -j$(nproc)
+        # Install manually to avoid sample program issues
+        cp -a .libs/libSDL2_image*.so* $DEPS/lib/ || make install
+        cp SDL_image.h $DEPS/include/SDL2/ || true
         cd ..
 
         # OpenSSL (for HTTPS support in libcurl)
