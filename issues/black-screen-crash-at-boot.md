@@ -541,12 +541,18 @@ cat /dev/urandom > /dev/fb0  # Shows static on screen
 - **Attempt 19b**: Fixed to use `steward-fu/sdl2` repo
   - Problem: The sdl2/ directory has no `configure` script (requires `./autogen.sh` first)
   - steward-fu's build system requires his custom toolchain (`/opt/mini/`)
-- **Attempt 19c (CURRENT)**: Use PREBUILT libraries from steward-fu's repo
+- **Attempt 19c**: Use PREBUILT libraries from steward-fu's repo
   - The `steward-fu/sdl2` repo has `prebuilt/mini/` directory with ready-to-use libraries:
     - `libSDL2-2.0.so.0` (5.7MB) - SDL2 with MMIYOO driver compiled in
     - `libEGL.so` (55KB) - EGL for OpenGL ES
     - `libGLESv2.so` (21MB) - SwiftShader software OpenGL ES renderer
   - Use SDL2 headers from `sdl2/include/`
+  - Bundle all libraries with the app
+  - **Problem 1**: Missing `SDL_config.h` - headers from repo are source templates, not generated
+  - **Problem 2**: SDL2_ttf configure can't find SDL2 (no pkg-config or sdl2-config)
+- **Attempt 19d (CURRENT)**: Fix prebuilt approach with generated config
+  - Generate `SDL_config.h` for Miyoo Mini (normally created by configure)
+  - Create `sdl2-config` script and `sdl2.pc` pkg-config file
   - Bundle all libraries with the app
 - **Why Prebuilt Libraries**:
   - steward-fu compiled these with his custom toolchain (`/opt/mini/`)
