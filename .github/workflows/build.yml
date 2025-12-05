@@ -724,6 +724,7 @@ jobs:
           ../src/screens/screen_automation.c \
           ../src/screens/screen_script.c \
           ../src/screens/screen_scene.c \
+          ../src/screens/screen_test.c \
           ../src/utils/input.c \
           ../src/utils/config.c \
           ../src/utils/json_helpers.c \
