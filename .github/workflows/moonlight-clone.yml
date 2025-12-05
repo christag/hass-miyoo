@@ -51,10 +51,13 @@ jobs:
         # Get SDL2 headers from the official SDL2 source
         wget -q https://github.com/libsdl-org/SDL/releases/download/release-2.28.5/SDL2-2.28.5.tar.gz
         tar xzf SDL2-2.28.5.tar.gz
-        cp -r SDL2-2.28.5/include/* deps/include/
+
+        # Create SDL2 subdirectory and copy headers there
+        mkdir -p deps/include/SDL2
+        cp -r SDL2-2.28.5/include/* deps/include/SDL2/
 
         echo "=== SDL2 headers ==="
-        ls -la deps/include/
+        ls -la deps/include/SDL2/ | head -20
 
     - name: Create minimal SDL2 test app
       run: |
