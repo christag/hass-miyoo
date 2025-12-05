@@ -202,13 +202,17 @@ jobs:
       run: |
         export PATH="/opt/miyoomini-toolchain/bin:$PATH"
         export CROSS_PREFIX="/opt/miyoomini-toolchain/bin/arm-linux-gnueabihf-"
+        export SYSROOT="/opt/miyoomini-toolchain/arm-linux-gnueabihf/libc"
 
         echo "=== Compiling SDL2 test ==="
+        echo "Using sysroot: $SYSROOT"
 
-        # Compile with the same flags moonlight uses
+        # Compile with the EXACT same flags moonlight uses, including sysroot
+        # --sysroot: Use the toolchain's C library for ABI compatibility
         # --allow-shlib-undefined: SDL2 lib has many deps (EGL, GLES, etc) that
         # aren't available at link time but will be on device via LD_LIBRARY_PATH
         ${CROSS_PREFIX}gcc \
+          --sysroot=$SYSROOT \
           -o sdl_test/sdl_test \
           sdl_test/main.c \
           -I deps/include \
