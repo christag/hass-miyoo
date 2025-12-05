@@ -81,6 +81,9 @@ jobs:
 
     - name: Build moonlight-embedded-miyoo
       run: |
+        # Add toolchain to PATH so CMake can find arm-linux-gnueabihf-gcc
+        export PATH="/opt/miyoomini-toolchain/bin:$PATH"
+
         cd moonlight-embedded-miyoo
 
         # Create build directory
