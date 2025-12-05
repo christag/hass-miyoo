@@ -9,48 +9,107 @@ on:
   workflow_dispatch:
 
 jobs:
+  # Build the Miyoo toolchain Docker image (shared by other jobs)
+  # This builds shauninman/union-miyoomini-toolchain from source
+  build-toolchain:
+    runs-on: ubuntu-22.04
+    outputs:
+      image-tag: ${{ steps.build.outputs.image-tag }}
+
+    steps:
+    - name: Clone and build Miyoo toolchain Docker image
+      id: build
+      run: |
+        set -ex
+
+        # Clone the union-miyoomini-toolchain repo
+        git clone --depth 1 https://github.com/MiyooMini/union-toolchain.git
+
+        # Build the Docker image
+        cd union-toolchain
+        docker build -t miyoo-toolchain:local .
+
+        # Save the image to a tar file for other jobs
+        docker save miyoo-toolchain:local | gzip > ../miyoo-toolchain.tar.gz
+
+        echo "image-tag=miyoo-toolchain:local" >> $GITHUB_OUTPUT
+
+    - name: Upload toolchain image
+      uses: actions/upload-artifact@v4
+      with:
+        name: miyoo-toolchain-image
+        path: miyoo-toolchain.tar.gz
+        retention-days: 1
+
   # Minimal test binary for debugging display issues
-  # Uses shauninman/union-miyoomini-toolchain Docker image for proper ABI compatibility
-  # This toolchain has SDL2 built into the sysroot, ensuring binary and library match
+  # Uses the Miyoo toolchain for proper ABI compatibility
   build-test-display:
     runs-on: ubuntu-22.04
+    needs: build-toolchain
 
     steps:
     - uses: actions/checkout@v4
+
+    - name: Download toolchain image
+      uses: actions/download-artifact@v4
+      with:
+        name: miyoo-toolchain-image
+
+    - name: Load toolchain image
+      run: |
+        gunzip -c miyoo-toolchain.tar.gz | docker load
 
     - name: Build test_display using Miyoo toolchain Docker
       run: |
         set -ex
 
-        # Use shauninman's union-miyoomini-toolchain Docker image
-        # This is the official toolchain used by MinUI and other working Miyoo apps
-        # SDL2 is already compiled in the sysroot with proper MMIYOO driver
-        docker run --rm -v $PWD:/work shauninman/union-miyoomini-toolchain:latest /bin/bash -c '
+        # Use the locally built Miyoo toolchain
+        # SDL2 is compiled in the sysroot with proper MMIYOO driver
+        docker run --rm -v $PWD:/root/workspace miyoo-toolchain:local /bin/bash -c '
           set -ex
-          cd /work
+          cd /root/workspace
 
-          # Toolchain paths (as discovered from XK9274/miyoo_sdl2_benchmarks)
-          export CROSS_PREFIX=/opt/miyoomini-toolchain/usr/bin/arm-linux-gnueabihf-
-          export SYSROOT=/opt/miyoomini-toolchain/usr/arm-linux-gnueabihf/sysroot
-          export SDL_INCLUDE=$SYSROOT/usr/include/SDL2
-          export SDL_LIBDIR=$SYSROOT/usr/lib
+          # The toolchain sets up CROSS_COMPILE and PATH via .bashrc
+          # Toolchain is at /opt/miyoomini-toolchain
+          export CROSS_PREFIX=/opt/miyoomini-toolchain/bin/arm-linux-gnueabihf-
+          export SYSROOT=/opt/miyoomini-toolchain/arm-linux-gnueabihf/libc
 
           echo "=== Toolchain Info ==="
-          ${CROSS_PREFIX}gcc --version
+          ${CROSS_PREFIX}gcc --version || echo "Checking alternate path..."
 
-          echo "=== SDL2 in sysroot ==="
-          ls -la $SDL_LIBDIR/libSDL2* || echo "Checking alternate locations..."
-          ls -la $SYSROOT/lib/libSDL2* || echo "Not in /lib either"
-          find $SYSROOT -name "libSDL2*" 2>/dev/null || echo "SDL2 search complete"
+          # Find the actual toolchain location
+          echo "=== Finding toolchain ==="
+          find /opt -name "arm-linux-gnueabihf-gcc" 2>/dev/null || true
+          ls -la /opt/ || true
 
-          echo "=== SDL2 headers ==="
-          ls $SDL_INCLUDE/*.h | head -5 || echo "Headers location may differ"
-          find $SYSROOT -name "SDL.h" 2>/dev/null
+          # Find SDL2 in sysroot
+          echo "=== Finding SDL2 ==="
+          find /opt -name "libSDL2*" 2>/dev/null | head -10 || echo "SDL2 not found"
+          find /opt -name "SDL.h" 2>/dev/null | head -5 || echo "SDL.h not found"
+
+          # Set correct paths based on what we find
+          GCC_PATH=$(find /opt -name "arm-linux-gnueabihf-gcc" -type f 2>/dev/null | head -1)
+          if [ -n "$GCC_PATH" ]; then
+            export CROSS_PREFIX=$(dirname $GCC_PATH)/arm-linux-gnueabihf-
+          fi
+
+          SDL2_LIB=$(find /opt -name "libSDL2*.so*" -type f 2>/dev/null | head -1)
+          if [ -n "$SDL2_LIB" ]; then
+            export SDL_LIBDIR=$(dirname $SDL2_LIB)
+          fi
+
+          SDL_H=$(find /opt -name "SDL.h" 2>/dev/null | head -1)
+          if [ -n "$SDL_H" ]; then
+            export SDL_INCLUDE=$(dirname $SDL_H)
+          fi
+
+          echo "CROSS_PREFIX: $CROSS_PREFIX"
+          echo "SDL_LIBDIR: $SDL_LIBDIR"
+          echo "SDL_INCLUDE: $SDL_INCLUDE"
 
           # Compile test_display using toolchain SDL2
           ${CROSS_PREFIX}gcc \
             -march=armv7-a -mtune=cortex-a7 -mfpu=neon-vfpv4 -mfloat-abi=hard \
-            --sysroot=$SYSROOT \
             -I$SDL_INCLUDE \
             -o test_display \
             src/test_display.c \
@@ -64,6 +123,9 @@ jobs:
 
           # Check what libraries the binary needs
           ${CROSS_PREFIX}readelf -d test_display | grep NEEDED || true
+
+          # Save SDL2 library path for packaging
+          echo "$SDL_LIBDIR" > SDL2_LIB_PATH.txt
         '
 
     - name: Create test package
@@ -76,23 +138,24 @@ jobs:
         chmod +x release/test_display/launch.sh release/test_display/test_display
 
         # Extract SDL2 library from the toolchain sysroot
-        # This ensures the library and binary are from the same toolchain
-        docker run --rm -v $PWD:/work shauninman/union-miyoomini-toolchain:latest /bin/bash -c '
+        SDL_LIBDIR=$(cat SDL2_LIB_PATH.txt)
+        docker run --rm -v $PWD:/root/workspace miyoo-toolchain:local /bin/bash -c "
           set -ex
-          SYSROOT=/opt/miyoomini-toolchain/usr/arm-linux-gnueabihf/sysroot
+          SDL_LIBDIR=$SDL_LIBDIR
 
-          # Find and copy SDL2 library
-          SDL2_LIB=$(find $SYSROOT -name "libSDL2*.so*" -type f | head -1)
-          if [ -n "$SDL2_LIB" ]; then
-            cp -L $SDL2_LIB /work/release/test_display/lib/libSDL2-2.0.so.0
+          # Copy SDL2 library
+          if [ -d \"\$SDL_LIBDIR\" ]; then
+            cp -L \$SDL_LIBDIR/libSDL2*.so* /root/workspace/release/test_display/lib/ 2>/dev/null || true
           fi
 
-          # Also copy any EGL/GLES libraries if present
-          find $SYSROOT -name "libEGL.so*" -type f -exec cp -L {} /work/release/test_display/lib/ \; 2>/dev/null || true
-          find $SYSROOT -name "libGLES*.so*" -type f -exec cp -L {} /work/release/test_display/lib/ \; 2>/dev/null || true
+          # Rename to expected name
+          cd /root/workspace/release/test_display/lib/
+          if [ -f libSDL2.so ]; then
+            mv libSDL2.so libSDL2-2.0.so.0 2>/dev/null || true
+          fi
 
-          ls -la /work/release/test_display/lib/
-        '
+          ls -la /root/workspace/release/test_display/lib/
+        "
 
         cd release
         zip -r test_display.zip test_display/
@@ -103,81 +166,77 @@ jobs:
         name: test-display-miyoo
         path: release/test_display.zip
 
-  # Main HACompanion build using shauninman/union-miyoomini-toolchain Docker image
+  # Main HACompanion build using Miyoo toolchain Docker image
   # This toolchain has SDL2 built into the sysroot, ensuring binary and library match
   # Critical for avoiding the ABI mismatch that caused the black screen issue
   build-miyoo-arm:
     runs-on: ubuntu-22.04
+    needs: build-toolchain
 
     steps:
     - uses: actions/checkout@v4
+
+    - name: Download toolchain image
+      uses: actions/download-artifact@v4
+      with:
+        name: miyoo-toolchain-image
+
+    - name: Load toolchain image
+      run: |
+        gunzip -c miyoo-toolchain.tar.gz | docker load
 
     - name: Build HACompanion using Miyoo toolchain Docker
       run: |
         set -ex
 
-        # Use shauninman's union-miyoomini-toolchain Docker image
-        # This is the official toolchain used by MinUI and other working Miyoo apps
-        docker run --rm -v $PWD:/work shauninman/union-miyoomini-toolchain:latest /bin/bash -c '
+        # Use the locally built Miyoo toolchain
+        docker run --rm -v $PWD:/root/workspace miyoo-toolchain:local /bin/bash -c '
           set -ex
-          cd /work
+          cd /root/workspace
 
-          # Toolchain paths
-          export CROSS_PREFIX=/opt/miyoomini-toolchain/usr/bin/arm-linux-gnueabihf-
-          export SYSROOT=/opt/miyoomini-toolchain/usr/arm-linux-gnueabihf/sysroot
-          export DEPS=/work/deps
-
+          # Set up paths - toolchain location varies, so we find it dynamically
+          export DEPS=/root/workspace/deps
           mkdir -p $DEPS/lib $DEPS/include
+
+          echo "=== Finding toolchain ==="
+          GCC_PATH=$(find /opt -name "arm-linux-gnueabihf-gcc" -type f 2>/dev/null | head -1)
+          if [ -n "$GCC_PATH" ]; then
+            export CROSS_PREFIX=$(dirname $GCC_PATH)/arm-linux-gnueabihf-
+          else
+            echo "ERROR: Could not find ARM cross-compiler"
+            exit 1
+          fi
 
           echo "=== Toolchain Info ==="
           ${CROSS_PREFIX}gcc --version
 
-          echo "=== Finding SDL2 in sysroot ==="
+          echo "=== Finding SDL2 ==="
           SDL2_LIB_PATH=""
           SDL2_INC_PATH=""
 
           # Find SDL2 library
-          for path in $SYSROOT/usr/lib $SYSROOT/lib; do
-            if [ -f "$path/libSDL2.so" ] || [ -f "$path/libSDL2-2.0.so.0" ]; then
-              SDL2_LIB_PATH=$path
-              break
-            fi
-          done
-
-          # Find SDL2 headers
-          for path in $SYSROOT/usr/include/SDL2 $SYSROOT/include/SDL2; do
-            if [ -f "$path/SDL.h" ]; then
-              SDL2_INC_PATH=$path
-              break
-            fi
-          done
-
-          # Fallback: search everywhere
-          if [ -z "$SDL2_LIB_PATH" ]; then
-            SDL2_SO=$(find $SYSROOT -name "libSDL2*.so*" -type f 2>/dev/null | head -1)
-            if [ -n "$SDL2_SO" ]; then
-              SDL2_LIB_PATH=$(dirname "$SDL2_SO")
-            fi
+          SDL2_SO=$(find /opt -name "libSDL2*.so*" -type f 2>/dev/null | head -1)
+          if [ -n "$SDL2_SO" ]; then
+            SDL2_LIB_PATH=$(dirname "$SDL2_SO")
           fi
 
-          if [ -z "$SDL2_INC_PATH" ]; then
-            SDL_H=$(find $SYSROOT -name "SDL.h" 2>/dev/null | head -1)
-            if [ -n "$SDL_H" ]; then
-              SDL2_INC_PATH=$(dirname "$SDL_H")
-            fi
+          # Find SDL2 headers
+          SDL_H=$(find /opt -name "SDL.h" 2>/dev/null | head -1)
+          if [ -n "$SDL_H" ]; then
+            SDL2_INC_PATH=$(dirname "$SDL_H")
           fi
 
           echo "SDL2 library path: $SDL2_LIB_PATH"
           echo "SDL2 include path: $SDL2_INC_PATH"
-          ls -la $SDL2_LIB_PATH/libSDL2* || true
-          ls $SDL2_INC_PATH/*.h | head -5 || true
+          ls -la $SDL2_LIB_PATH/libSDL2* 2>/dev/null || echo "No SDL2 libs found"
+          ls $SDL2_INC_PATH/*.h 2>/dev/null | head -5 || echo "No SDL2 headers found"
 
           # Build cJSON (static)
           echo "=== Building cJSON ==="
           wget -q https://github.com/DaveGamble/cJSON/archive/refs/tags/v1.7.16.tar.gz
           tar xzf v1.7.16.tar.gz
           cd cJSON-1.7.16
-          ${CROSS_PREFIX}gcc --sysroot=$SYSROOT -c cJSON.c -o cJSON.o -fPIC
+          ${CROSS_PREFIX}gcc -c cJSON.c -o cJSON.o -fPIC
           ${CROSS_PREFIX}ar rcs libcjson.a cJSON.o
           cp libcjson.a $DEPS/lib/
           mkdir -p $DEPS/include/cjson
@@ -189,7 +248,7 @@ jobs:
           wget -q https://www.sqlite.org/2024/sqlite-amalgamation-3450000.zip
           unzip -q sqlite-amalgamation-3450000.zip
           cd sqlite-amalgamation-3450000
-          ${CROSS_PREFIX}gcc --sysroot=$SYSROOT -c sqlite3.c -o sqlite3.o -DSQLITE_OMIT_LOAD_EXTENSION -fPIC
+          ${CROSS_PREFIX}gcc -c sqlite3.c -o sqlite3.o -DSQLITE_OMIT_LOAD_EXTENSION -fPIC
           ${CROSS_PREFIX}ar rcs libsqlite3.a sqlite3.o
           cp libsqlite3.a $DEPS/lib/
           cp sqlite3.h sqlite3ext.h $DEPS/include/
@@ -202,7 +261,7 @@ jobs:
           tar xzf freetype-2.13.2.tar.gz
           cd freetype-2.13.2
           ./configure --host=arm-linux-gnueabihf --prefix=$DEPS \
-            CC="${CROSS_PREFIX}gcc --sysroot=$SYSROOT" \
+            CC="${CROSS_PREFIX}gcc" \
             --enable-shared --disable-static \
             --with-zlib=no --with-bzip2=no --with-png=no --with-harfbuzz=no --with-brotli=no
           make -j$(nproc)
@@ -216,7 +275,7 @@ jobs:
           cd SDL2_ttf-2.20.2
           export PKG_CONFIG_PATH=$DEPS/lib/pkgconfig:$SDL2_LIB_PATH/pkgconfig:$PKG_CONFIG_PATH
           ./configure --host=arm-linux-gnueabihf --prefix=$DEPS \
-            CC="${CROSS_PREFIX}gcc --sysroot=$SYSROOT" \
+            CC="${CROSS_PREFIX}gcc" \
             --enable-shared --disable-static \
             --disable-freetype-builtin \
             --disable-harfbuzz \
@@ -236,7 +295,7 @@ jobs:
           tar xzf SDL2_image-2.6.3.tar.gz
           cd SDL2_image-2.6.3
           ./configure --host=arm-linux-gnueabihf --prefix=$DEPS \
-            CC="${CROSS_PREFIX}gcc --sysroot=$SYSROOT" \
+            CC="${CROSS_PREFIX}gcc" \
             --enable-shared --disable-static \
             --disable-sdltest \
             --disable-jpg --disable-png-shared --disable-webp --disable-tif \
@@ -266,7 +325,7 @@ jobs:
           tar xzf curl-8.5.0.tar.gz
           cd curl-8.5.0
           ./configure --host=arm-linux-gnueabihf --prefix=$DEPS \
-            CC="${CROSS_PREFIX}gcc --sysroot=$SYSROOT" \
+            CC="${CROSS_PREFIX}gcc" \
             --disable-shared --enable-static \
             --with-openssl=$DEPS \
             --without-zlib --without-brotli --without-zstd \
@@ -291,7 +350,6 @@ jobs:
           # Direct compilation (avoid cmake cross-compile complexity)
           ${CROSS_PREFIX}gcc \
             -march=armv7-a -mtune=cortex-a7 -mfpu=neon-vfpv4 -mfloat-abi=hard \
-            --sysroot=$SYSROOT \
             -I$SDL2_INC_PATH \
             -I$DEPS/include \
             -I$DEPS/include/freetype2 \
@@ -330,7 +388,7 @@ jobs:
           ${CROSS_PREFIX}readelf -d hacompanion | grep NEEDED || true
 
           # Save SDL2 library path for packaging step
-          echo "$SDL2_LIB_PATH" > /work/SDL2_LIB_PATH.txt
+          echo "$SDL2_LIB_PATH" > /root/workspace/SDL2_LIB_PATH.txt
         '
 
     - name: Create Miyoo package
@@ -343,29 +401,33 @@ jobs:
         cp assets/icon.png release/HACompanion/icon.png
 
         # Bundle libraries from toolchain (ensures ABI compatibility)
-        docker run --rm -v $PWD:/work shauninman/union-miyoomini-toolchain:latest /bin/bash -c '
+        docker run --rm -v $PWD:/root/workspace miyoo-toolchain:local /bin/bash -c '
           set -ex
-          SYSROOT=/opt/miyoomini-toolchain/usr/arm-linux-gnueabihf/sysroot
-          SDL2_LIB_PATH=$(cat /work/SDL2_LIB_PATH.txt)
+          cd /root/workspace
+          SDL2_LIB_PATH=$(cat SDL2_LIB_PATH.txt)
 
-          # Copy SDL2 and related from sysroot
+          # Copy SDL2 from the toolchain sysroot
           if [ -n "$SDL2_LIB_PATH" ]; then
-            cp -L $SDL2_LIB_PATH/libSDL2-2.0.so.0 /work/release/HACompanion/lib/ 2>/dev/null || \
-              cp -L $SDL2_LIB_PATH/libSDL2.so /work/release/HACompanion/lib/libSDL2-2.0.so.0
+            cp -L $SDL2_LIB_PATH/libSDL2-2.0.so.0 release/HACompanion/lib/ 2>/dev/null || \
+              cp -L $SDL2_LIB_PATH/libSDL2.so release/HACompanion/lib/libSDL2-2.0.so.0 2>/dev/null || \
+              find $SDL2_LIB_PATH -name "libSDL2*.so*" -exec cp -L {} release/HACompanion/lib/ \;
           fi
 
-          # Copy EGL/GLES if present in sysroot
-          find $SYSROOT -name "libEGL.so*" -type f -exec cp -L {} /work/release/HACompanion/lib/ \; 2>/dev/null || true
-          find $SYSROOT -name "libGLESv2.so*" -type f -exec cp -L {} /work/release/HACompanion/lib/ \; 2>/dev/null || true
+          # Copy EGL/GLES if present in toolchain
+          find /opt -name "libEGL.so*" -type f 2>/dev/null | head -1 | xargs -I{} cp -L {} release/HACompanion/lib/ 2>/dev/null || true
+          find /opt -name "libGLESv2.so*" -type f 2>/dev/null | head -1 | xargs -I{} cp -L {} release/HACompanion/lib/ 2>/dev/null || true
 
           # Copy our built shared libraries
-          cp -L /work/deps/lib/libSDL2_ttf-2.0.so.0 /work/release/HACompanion/lib/ 2>/dev/null || \
-            cp -L /work/deps/lib/libSDL2_ttf.so.0 /work/release/HACompanion/lib/libSDL2_ttf-2.0.so.0
-          cp -L /work/deps/lib/libSDL2_image-2.0.so.0 /work/release/HACompanion/lib/ 2>/dev/null || \
-            cp -L /work/deps/lib/libSDL2_image.so.0 /work/release/HACompanion/lib/libSDL2_image-2.0.so.0
-          cp -L /work/deps/lib/libfreetype.so.6 /work/release/HACompanion/lib/
+          cp -L deps/lib/libSDL2_ttf-2.0.so.0 release/HACompanion/lib/ 2>/dev/null || \
+            cp -L deps/lib/libSDL2_ttf.so.0 release/HACompanion/lib/libSDL2_ttf-2.0.so.0 2>/dev/null || \
+            cp -L deps/lib/libSDL2_ttf.so release/HACompanion/lib/libSDL2_ttf-2.0.so.0
+          cp -L deps/lib/libSDL2_image-2.0.so.0 release/HACompanion/lib/ 2>/dev/null || \
+            cp -L deps/lib/libSDL2_image.so.0 release/HACompanion/lib/libSDL2_image-2.0.so.0 2>/dev/null || \
+            cp -L deps/lib/libSDL2_image.so release/HACompanion/lib/libSDL2_image-2.0.so.0
+          cp -L deps/lib/libfreetype.so.6 release/HACompanion/lib/ 2>/dev/null || \
+            cp -L deps/lib/libfreetype.so release/HACompanion/lib/libfreetype.so.6
 
-          ls -la /work/release/HACompanion/lib/
+          ls -la release/HACompanion/lib/
         '
 
         # Create launch script
