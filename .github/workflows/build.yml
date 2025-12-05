@@ -17,10 +17,14 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-    - name: Install ARM cross-compiler
+    - name: Install ARM A-profile toolchain (GCC 8.3, glibc 2.28)
       run: |
-        sudo apt-get update
-        sudo apt-get install -y gcc-arm-linux-gnueabihf
+        # Download ARM's official A-profile toolchain matching Miyoo's libc
+        # Miyoo uses: "GNU Toolchain for the A-profile Architecture 8.2-2018-08"
+        # This toolchain targets glibc 2.28 which matches the device
+        wget -q https://developer.arm.com/-/media/Files/downloads/gnu-a/8.3-2019.03/binrel/gcc-arm-8.3-2019.03-x86_64-arm-linux-gnueabihf.tar.xz
+        tar xf gcc-arm-8.3-2019.03-x86_64-arm-linux-gnueabihf.tar.xz
+        echo "$PWD/gcc-arm-8.3-2019.03-x86_64-arm-linux-gnueabihf/bin" >> $GITHUB_PATH
 
     - name: Get SDL2 prebuilt libraries with MMIYOO driver
       run: |
@@ -33,7 +37,7 @@ jobs:
         arm-linux-gnueabihf-gcc --version
 
         # Clone steward-fu/sdl2 which has prebuilt libraries for Miyoo Mini
-        # These are glibc-based libraries that work with the Ubuntu cross-compiler
+        # These are glibc-based libraries matching ARM A-profile toolchain
         git clone --depth 1 https://github.com/steward-fu/sdl2.git SDL2-mmiyoo
 
         # Copy prebuilt libraries (already compiled for Miyoo Mini with glibc)
@@ -109,13 +113,21 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-    - name: Install ARM cross-compiler and tools
+    - name: Install ARM A-profile toolchain (GCC 8.3, glibc 2.28)
       run: |
+        # Install cmake and unzip from apt
         sudo apt-get update
-        sudo apt-get install -y gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf cmake unzip
+        sudo apt-get install -y cmake unzip
+
+        # Download ARM's official A-profile toolchain matching Miyoo's libc
+        # Miyoo uses: "GNU Toolchain for the A-profile Architecture 8.2-2018-08"
+        # This toolchain targets glibc 2.28 which matches the device
+        wget -q https://developer.arm.com/-/media/Files/downloads/gnu-a/8.3-2019.03/binrel/gcc-arm-8.3-2019.03-x86_64-arm-linux-gnueabihf.tar.xz
+        tar xf gcc-arm-8.3-2019.03-x86_64-arm-linux-gnueabihf.tar.xz
+        echo "$PWD/gcc-arm-8.3-2019.03-x86_64-arm-linux-gnueabihf/bin" >> $GITHUB_PATH
 
         echo "=== Cross-compiler Info ==="
-        arm-linux-gnueabihf-gcc --version
+        $PWD/gcc-arm-8.3-2019.03-x86_64-arm-linux-gnueabihf/bin/arm-linux-gnueabihf-gcc --version
 
     - name: Get SDL2 prebuilt libraries with MMIYOO driver
       run: |
