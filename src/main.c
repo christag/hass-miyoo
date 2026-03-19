@@ -10,7 +10,7 @@
  */
 
 // DEBUG: Set to 1 to skip all network/database and just render test screen
-#define SKIP_NETWORK_TEST 1
+#define SKIP_NETWORK_TEST 0
 
 #include <SDL.h>
 #include <SDL_image.h>
