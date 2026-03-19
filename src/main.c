@@ -77,6 +77,9 @@ typedef struct {
     // Phase 12: Background sync
     Uint32 last_sync_check;
 
+    // Render target texture - we render to this first, then blit to screen.
+    // This works around the MMIYOO driver not properly clearing framebuffers.
+    SDL_Texture *render_target;
 } app_state_t;
 
 // Screen IDs
@@ -94,10 +97,7 @@ typedef struct {
  */
 static int init_sdl(app_state_t *app) {
     // Set Miyoo double buffer flag BEFORE SDL_Init()
-    // NOTE: Using "0" to disable double-buffering - this eliminates the
-    // ghosting/stacking issue where alternate buffers retain stale content.
-    // The display still works without double-buffering on the MMIYOO driver.
-    SDL_setenv("SDL_MMIYOO_DOUBLE_BUFFER", "0", 1);
+    SDL_setenv("SDL_MMIYOO_DOUBLE_BUFFER", "1", 1);
 
     // Initialize SDL VIDEO first (required for MMIYOO driver)
     if (SDL_Init(SDL_INIT_VIDEO) < 0) {
@@ -170,6 +170,24 @@ static int init_sdl(app_state_t *app) {
     // Without this, certain buttons (like X/LSHIFT) trigger an on-screen
     // keyboard overlay that fights with our app for input.
     SDL_StopTextInput();
+
+    // Create off-screen render target texture.
+    // The MMIYOO driver doesn't properly clear its framebuffers, causing
+    // ghosting and screen stacking. By rendering to a texture first and
+    // then copying the complete texture to the screen, we bypass the
+    // driver's broken clear behavior entirely.
+    app->render_target = SDL_CreateTexture(
+        app->renderer,
+        SDL_PIXELFORMAT_RGBA8888,
+        SDL_TEXTUREACCESS_TARGET,
+        SCREEN_WIDTH, SCREEN_HEIGHT
+    );
+    if (!app->render_target) {
+        printf("Warning: Failed to create render target: %s\n", SDL_GetError());
+        printf("Falling back to direct rendering\n");
+    } else {
+        printf("Render target created (640x480 off-screen texture)\n");
+    }
 
     // Debug: Print SDL driver information
     SDL_RendererInfo renderer_info;
@@ -341,17 +359,26 @@ static void render_exit_dialog(app_state_t *app) {
 
 /**
  * Render the current frame
+ *
+ * Uses an off-screen render target texture to work around the MMIYOO
+ * driver's broken SDL_RenderClear. All drawing goes to the texture first,
+ * then the complete texture is copied to the screen in one operation.
  */
 static void render(app_state_t *app) {
     static int frame_count = 0;
 
-    // Debug: Print which screen we're rendering (first 10 frames only)
     if (frame_count < 10) {
         printf("Frame %d: Rendering screen %d\n", frame_count, app->current_screen);
         frame_count++;
     }
 
-    // Clear screen to Game Boy darkest green
+    // Redirect all rendering to off-screen texture
+    if (app->render_target) {
+        SDL_SetRenderTarget(app->renderer, app->render_target);
+    }
+
+    // Clear the render target (this DOES work on textures)
+    SDL_SetRenderDrawBlendMode(app->renderer, SDL_BLENDMODE_NONE);
     set_render_color(app->renderer, COLOR_BACKGROUND);
     SDL_RenderClear(app->renderer);
 
@@ -374,12 +401,17 @@ static void render(app_state_t *app) {
         test_screen_render(app->test_screen);
     }
 
-    // Render exit dialog overlay if active
     if (app->show_exit_dialog) {
         render_exit_dialog(app);
     }
 
-    // Present the frame
+    // Switch back to screen and blit the completed texture
+    if (app->render_target) {
+        SDL_SetRenderTarget(app->renderer, NULL);
+        SDL_SetRenderDrawBlendMode(app->renderer, SDL_BLENDMODE_NONE);
+        SDL_RenderCopy(app->renderer, app->render_target, NULL, NULL);
+    }
+
     SDL_RenderPresent(app->renderer);
 }
 
@@ -473,6 +505,11 @@ static void cleanup(app_state_t *app) {
     }
     if (app->config) {
         config_free(app->config);
+    }
+
+    // Cleanup render target
+    if (app->render_target) {
+        SDL_DestroyTexture(app->render_target);
     }
 
     // Phase 1: Cleanup SDL
