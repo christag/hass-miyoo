@@ -76,6 +76,10 @@ typedef struct {
 
     // Phase 12: Background sync
     Uint32 last_sync_check;
+
+    // Double-buffer fix: track screen changes to force re-render both buffers
+    int prev_screen;
+    int force_redraw;
 } app_state_t;
 
 // Screen IDs
@@ -343,6 +347,14 @@ static void render(app_state_t *app) {
         frame_count++;
     }
 
+    // MMIYOO double-buffer fix: When screen changes, we need to render
+    // the new content to BOTH buffers. Otherwise the old screen content
+    // persists in the alternate buffer and causes "stacking".
+    if (app->current_screen != app->prev_screen) {
+        app->force_redraw = 2;  // Render 2 extra frames to fill both buffers
+        app->prev_screen = app->current_screen;
+    }
+
     // Clear screen to Game Boy darkest green
     set_render_color(app->renderer, COLOR_BACKGROUND);
     SDL_RenderClear(app->renderer);
@@ -373,6 +385,35 @@ static void render(app_state_t *app) {
 
     // Present the frame
     SDL_RenderPresent(app->renderer);
+
+    // MMIYOO double-buffer fix: force extra presents to fill both buffers
+    if (app->force_redraw > 0) {
+        app->force_redraw--;
+        // Re-clear and re-render immediately to the next buffer
+        set_render_color(app->renderer, COLOR_BACKGROUND);
+        SDL_RenderClear(app->renderer);
+
+        if (app->current_screen == SCREEN_SETUP && app->setup_screen)
+            setup_screen_render(app->setup_screen);
+        else if (app->current_screen == SCREEN_LIST && app->list_screen)
+            list_screen_render(app->list_screen);
+        else if (app->current_screen == SCREEN_DEVICE && app->device_screen)
+            device_screen_render(app->device_screen);
+        else if (app->current_screen == SCREEN_INFO && app->info_screen)
+            info_screen_render(app->info_screen);
+        else if (app->current_screen == SCREEN_AUTOMATION && app->automation_screen)
+            automation_screen_render(app->automation_screen);
+        else if (app->current_screen == SCREEN_SCRIPT && app->script_screen)
+            script_screen_render(app->script_screen);
+        else if (app->current_screen == SCREEN_SCENE && app->scene_screen)
+            scene_screen_render(app->scene_screen);
+        else if (app->current_screen == SCREEN_TEST && app->test_screen)
+            test_screen_render(app->test_screen);
+
+        if (app->show_exit_dialog) render_exit_dialog(app);
+
+        SDL_RenderPresent(app->renderer);
+    }
 }
 
 /**

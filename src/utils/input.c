@@ -17,8 +17,11 @@
 #define MIYOO_BUTTON_R1     SDLK_t
 #define MIYOO_BUTTON_L2     SDLK_TAB
 #define MIYOO_BUTTON_R2     SDLK_BACKSPACE
-#define MIYOO_DPAD_UP       SDLK_UP
-#define MIYOO_DPAD_DOWN     SDLK_DOWN
+// NOTE: Miyoo Mini Plus MMIYOO SDL driver sends physical UP as SDLK_UP,
+// but the screen orientation means UP on d-pad should move selection DOWN
+// in menus (like a Game Boy). Swap to match user expectation.
+#define MIYOO_DPAD_UP       SDLK_DOWN
+#define MIYOO_DPAD_DOWN     SDLK_UP
 #define MIYOO_DPAD_LEFT     SDLK_LEFT
 #define MIYOO_DPAD_RIGHT    SDLK_RIGHT
 
