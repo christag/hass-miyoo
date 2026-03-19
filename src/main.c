@@ -93,9 +93,11 @@ typedef struct {
  * Initialize SDL2 and create window/renderer
  */
 static int init_sdl(app_state_t *app) {
-    // CRITICAL: Set Miyoo double buffer flag BEFORE SDL_Init()
-    // This MUST be done in C code, not shell script, for proper SDL initialization
-    SDL_setenv("SDL_MMIYOO_DOUBLE_BUFFER", "1", 1);
+    // Set Miyoo double buffer flag BEFORE SDL_Init()
+    // NOTE: Using "0" to disable double-buffering - this eliminates the
+    // ghosting/stacking issue where alternate buffers retain stale content.
+    // The display still works without double-buffering on the MMIYOO driver.
+    SDL_setenv("SDL_MMIYOO_DOUBLE_BUFFER", "0", 1);
 
     // Initialize SDL VIDEO first (required for MMIYOO driver)
     if (SDL_Init(SDL_INIT_VIDEO) < 0) {
@@ -163,6 +165,11 @@ static int init_sdl(app_state_t *app) {
 
     // Disable texture filtering for pixel-perfect rendering
     SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "0");
+
+    // CRITICAL: Disable the MMIYOO driver's built-in virtual keyboard.
+    // Without this, certain buttons (like X/LSHIFT) trigger an on-screen
+    // keyboard overlay that fights with our app for input.
+    SDL_StopTextInput();
 
     // Debug: Print SDL driver information
     SDL_RendererInfo renderer_info;
@@ -344,12 +351,9 @@ static void render(app_state_t *app) {
         frame_count++;
     }
 
-    // Clear screen - use explicit FillRect instead of SDL_RenderClear
-    // because the MMIYOO driver may not properly clear with RenderClear
-    SDL_SetRenderDrawColor(app->renderer, 15, 56, 15, 255);
+    // Clear screen to Game Boy darkest green
+    set_render_color(app->renderer, COLOR_BACKGROUND);
     SDL_RenderClear(app->renderer);
-    SDL_Rect fullscreen = {0, 0, SCREEN_WIDTH, SCREEN_HEIGHT};
-    SDL_RenderFillRect(app->renderer, &fullscreen);
 
     // Render current screen
     if (app->current_screen == SCREEN_SETUP && app->setup_screen) {
@@ -376,38 +380,6 @@ static void render(app_state_t *app) {
     }
 
     // Present the frame
-    SDL_RenderPresent(app->renderer);
-
-    // MMIYOO double-buffer fix: The MMIYOO driver alternates between two
-    // framebuffers. We must render identical content to BOTH buffers every
-    // frame, otherwise the alternate buffer shows stale/garbage content
-    // causing flickering/ghosting. Render the same frame again immediately.
-    SDL_SetRenderDrawColor(app->renderer, 15, 56, 15, 255);
-    SDL_RenderClear(app->renderer);
-    {
-        SDL_Rect fs = {0, 0, SCREEN_WIDTH, SCREEN_HEIGHT};
-        SDL_RenderFillRect(app->renderer, &fs);
-    }
-
-    if (app->current_screen == SCREEN_SETUP && app->setup_screen)
-        setup_screen_render(app->setup_screen);
-    else if (app->current_screen == SCREEN_LIST && app->list_screen)
-        list_screen_render(app->list_screen);
-    else if (app->current_screen == SCREEN_DEVICE && app->device_screen)
-        device_screen_render(app->device_screen);
-    else if (app->current_screen == SCREEN_INFO && app->info_screen)
-        info_screen_render(app->info_screen);
-    else if (app->current_screen == SCREEN_AUTOMATION && app->automation_screen)
-        automation_screen_render(app->automation_screen);
-    else if (app->current_screen == SCREEN_SCRIPT && app->script_screen)
-        script_screen_render(app->script_screen);
-    else if (app->current_screen == SCREEN_SCENE && app->scene_screen)
-        scene_screen_render(app->scene_screen);
-    else if (app->current_screen == SCREEN_TEST && app->test_screen)
-        test_screen_render(app->test_screen);
-
-    if (app->show_exit_dialog) render_exit_dialog(app);
-
     SDL_RenderPresent(app->renderer);
 }
 
