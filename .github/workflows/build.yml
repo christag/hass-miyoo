@@ -75,9 +75,9 @@ jobs:
         git clone --depth 1 https://github.com/steward-fu/sdl2.git sdl2-mmiyoo
 
         # Copy prebuilt libraries (compiled with steward-fu's toolchain, includes MMIYOO driver)
-        cp sdl2-mmiyoo/prebuilt/mini/libSDL2-2.0.so.0 $DEPS/lib/
-        cp sdl2-mmiyoo/prebuilt/mini/libEGL.so $DEPS/lib/
-        cp sdl2-mmiyoo/prebuilt/mini/libGLESv2.so $DEPS/lib/
+        cp sdl2-mmiyoo/prebuilt/640x480/libSDL2-2.0.so.0 $DEPS/lib/
+        cp sdl2-mmiyoo/prebuilt/640x480/libEGL.so $DEPS/lib/
+        cp sdl2-mmiyoo/prebuilt/640x480/libGLESv2.so $DEPS/lib/
 
         # Create symlinks for linker
         cd $DEPS/lib
@@ -357,9 +357,9 @@ jobs:
         git clone --depth 1 https://github.com/steward-fu/sdl2.git sdl2-mmiyoo
 
         # Copy prebuilt libraries (compiled with steward-fu's toolchain, includes MMIYOO driver)
-        cp sdl2-mmiyoo/prebuilt/mini/libSDL2-2.0.so.0 $DEPS/lib/
-        cp sdl2-mmiyoo/prebuilt/mini/libEGL.so $DEPS/lib/
-        cp sdl2-mmiyoo/prebuilt/mini/libGLESv2.so $DEPS/lib/
+        cp sdl2-mmiyoo/prebuilt/640x480/libSDL2-2.0.so.0 $DEPS/lib/
+        cp sdl2-mmiyoo/prebuilt/640x480/libEGL.so $DEPS/lib/
+        cp sdl2-mmiyoo/prebuilt/640x480/libGLESv2.so $DEPS/lib/
 
         # Create symlinks for linker
         cd $DEPS/lib
