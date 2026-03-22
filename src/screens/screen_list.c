@@ -104,8 +104,9 @@ void list_screen_destroy(list_screen_t *screen) {
 int list_screen_handle_input(list_screen_t *screen, SDL_Event *event) {
     if (!screen || !event || event->type != SDL_KEYDOWN) return 0;
 
-    // View mode toggle (X button) - cycles Domain → Room → Favorites → Domain
-    if (input_button_pressed(BTN_X)) {
+    // View mode toggle (Y button) - cycles Domain → Room → Favorites → Domain
+    // NOTE: X button (LSHIFT) triggers MMIYOO virtual keyboard, so we use Y instead
+    if (input_button_pressed(BTN_Y)) {
         if (screen->view_mode == VIEW_BY_DOMAIN) {
             screen->view_mode = VIEW_BY_ROOM;
             strcpy(screen->status_message, "View: By Room");
@@ -182,8 +183,8 @@ int list_screen_handle_input(list_screen_t *screen, SDL_Event *event) {
         return 0;
     }
 
-    // Toggle favorite with Y
-    if (input_button_pressed(BTN_Y)) {
+    // Toggle favorite with X
+    if (input_button_pressed(BTN_X)) {
         ha_entity_t *entity = list_screen_get_selected_entity(screen);
         if (entity && screen->cache_mgr) {
             int result = cache_manager_toggle_favorite(screen->cache_mgr, entity->entity_id);
@@ -260,10 +261,14 @@ void list_screen_render(list_screen_t *screen) {
             int y = list_y + (i * item_height);
             int is_selected = (idx == screen->entity_list.selected_index);
 
-            // Selection highlight
+            // Selection highlight with visible border
             if (is_selected) {
-                SDL_Rect bg = {12, y, 616, item_height - 2};
+                SDL_Rect bg = {12, y + 1, 612, item_height - 3};
                 ui_draw_filled_rect(r, bg, COLOR_SELECTED);
+                // Bright border around selection
+                set_render_color(r, COLOR_CURSOR);
+                SDL_Rect sel_border = {12, y + 1, 612, item_height - 3};
+                SDL_RenderDrawRect(r, &sel_border);
             }
 
             // Subtle separator line between items
@@ -324,7 +329,7 @@ void list_screen_render(list_screen_t *screen) {
     }
 
     // Button hints
-    const char *hints[] = {"A:Act", "X:View", "Sel:Info", "St:Sync"};
+    const char *hints[] = {"A:Act", "Y:View", "Sel:Info", "St:Sync"};
     ui_draw_button_hints(r, font_small, hints, 4);
 }
 
