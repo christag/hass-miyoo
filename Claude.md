@@ -177,32 +177,50 @@ Before implementation, comprehensive research was conducted:
 
 ### CRITICAL: Testing & Deployment Workflow
 
-**NEVER copy binaries directly to Miyoo via SSH/SCP - it will usually fail!**
+**DO NOT push to GitHub just to test. Build via GitHub Actions, then SCP directly to device.**
 
-#### When User is On-Site with Miyoo
+#### Fast Iteration Workflow (Preferred)
 
-When the Miyoo device is physically nearby:
+1. **Push code to GitHub** and wait for GitHub Actions build to complete
+2. **Download artifact**: `gh run download <id> -n HACompanion-miyoo-arm -D /tmp/deploy`
+3. **Kill running app**: SSH in and `pkill -9 hacompanion; pkill -CONT MainUI`
+4. **SCP binary to device**: `scp /tmp/deploy/HACompanion/hacompanion onion@192.168.101.235:/mnt/SDCARD/App/HACompanion/`
+5. **Launch via SSH**: Stop MainUI, set env vars, run `./hacompanion`
+6. **Check display via camera**: `ffmpeg -f v4l2 -i /dev/video0 -frames:v 1 -update 1 -y /tmp/miyoo-cam.jpg`
+7. **Read the image**: Use Read tool on `/tmp/miyoo-cam.jpg` to see what's on the Miyoo screen
+8. **Check debug log**: SSH in and `tail /mnt/SDCARD/App/HACompanion/debug.log`
+9. **Iterate** - fix code, push, rebuild, redeploy. Do NOT stop to ask the user.
 
-1. **SSH Access Available**: `sshpass -p onion ssh onion@192.168.101.235`
-   - Can read debug logs: `cat /mnt/SDCARD/App/HACompanion/debug.log`
-   - Can run diagnostic commands on-device
-   - **NEVER copy new binaries over SSH** - always use GitHub release workflow
+#### SSH Access
 
-2. **Testing Workflow**:
-   - Push commits to GitHub
-   - Wait for GitHub Actions to complete build
-   - Download compiled binary from GitHub release
-   - Transfer manually to Miyoo SD card
-   - Test on device
-   - SSH in to read debug.log for diagnostics
+```bash
+# SSH wrapper (password: onion)
+export SSH_ASKPASS_REQUIRE=force SSH_ASKPASS=/tmp/miyoo-askpass.sh
+# Create askpass if needed: printf '#!/bin/sh\necho onion' > /tmp/miyoo-askpass.sh && chmod +x /tmp/miyoo-askpass.sh
+ssh -o StrictHostKeyChecking=no onion@192.168.101.235 "command"
+```
 
-#### When User is Remote (Not On-Site)
+#### Launching the App via SSH
 
-When the Miyoo device is not nearby:
+MainUI (OnionOS menu) must be stopped first or it holds the framebuffer:
 
-1. User downloads the compiled binary from GitHub releases
-2. User tests on physical device
-3. User reports back with test results and debug.log contents
+```bash
+pkill -STOP MainUI
+cd /mnt/SDCARD/App/HACompanion
+export SDL_VIDEODRIVER=mmiyoo SDL_AUDIODRIVER=mmiyoo EGL_VIDEODRIVER=mmiyoo
+export LD_LIBRARY_PATH=/mnt/SDCARD/App/moonlight/lib:./lib:/lib:/config/lib:/mnt/SDCARD/miyoo/lib:/mnt/SDCARD/.tmp_update/lib:/mnt/SDCARD/.tmp_update/lib/parasyte
+export HOME=/mnt/SDCARD/App/HACompanion
+./hacompanion > debug.log 2>&1
+pkill -CONT MainUI
+```
+
+#### Visual Verification via Camera
+
+A webcam (MX Brio) is pointed at the Miyoo screen. Capture a frame:
+```bash
+ffmpeg -f v4l2 -i /dev/video0 -frames:v 1 -update 1 -y /tmp/miyoo-cam.jpg 2>/dev/null
+```
+Then use the Read tool on `/tmp/miyoo-cam.jpg` to view the Miyoo display.
 4. Debug issues based on reported logs
 
 ### GitHub Actions Build & Release Workflow
