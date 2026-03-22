@@ -1,5 +1,8 @@
 /**
- * components.c - UI Component Library Implementation
+ * components.c - SNES RPG-Style UI Component Library
+ *
+ * Inspired by Final Fantasy VI / Chrono Trigger menu systems.
+ * Double-bordered windows, golden selection cursors, high contrast.
  */
 
 #include "components.h"
@@ -29,7 +32,6 @@ void ui_draw_text(SDL_Renderer *renderer, TTF_Font *font, const char *text,
 
     SDL_Rect dest = {x, y, surface->w, surface->h};
 
-    // Adjust x based on alignment
     switch (align) {
         case TEXT_ALIGN_CENTER:
             dest.x = x - (surface->w / 2);
@@ -62,16 +64,14 @@ void ui_draw_text_truncated(SDL_Renderer *renderer, TTF_Font *font, const char *
         return;
     }
 
-    // Need to truncate
     char truncated[256];
     strncpy(truncated, text, sizeof(truncated) - 4);
     truncated[sizeof(truncated) - 4] = '\0';
 
-    // Find length that fits
     int len = strlen(truncated);
     while (len > 0) {
         truncated[len] = '\0';
-        strcat(truncated, "...");
+        strcat(truncated, "..");
         TTF_SizeText(font, truncated, &text_width, &text_height);
         if (text_width <= max_width) {
             break;
@@ -84,8 +84,32 @@ void ui_draw_text_truncated(SDL_Renderer *renderer, TTF_Font *font, const char *
 }
 
 /* ============================================
- * Rectangles and Panels
+ * RPG-Style Window Drawing
  * ============================================ */
+
+/**
+ * Draw an RPG-style double-bordered window panel
+ * Outer border: light periwinkle
+ * Inner border: mid-blue
+ * Fill: deep panel blue
+ */
+static void ui_draw_rpg_window(SDL_Renderer *renderer, SDL_Rect rect) {
+    // Outer border (2px)
+    set_render_color(renderer, COLOR_BORDER_OUTER);
+    SDL_RenderDrawRect(renderer, &rect);
+    SDL_Rect inner1 = {rect.x + 1, rect.y + 1, rect.w - 2, rect.h - 2};
+    SDL_RenderDrawRect(renderer, &inner1);
+
+    // Inner border (1px darker)
+    set_render_color(renderer, COLOR_BORDER_INNER);
+    SDL_Rect inner2 = {rect.x + 2, rect.y + 2, rect.w - 4, rect.h - 4};
+    SDL_RenderDrawRect(renderer, &inner2);
+
+    // Fill
+    SDL_Rect fill = {rect.x + 3, rect.y + 3, rect.w - 6, rect.h - 6};
+    set_render_color(renderer, COLOR_BG_PANEL);
+    SDL_RenderFillRect(renderer, &fill);
+}
 
 void ui_draw_filled_rect(SDL_Renderer *renderer, SDL_Rect rect, SDL_Color color) {
     set_render_color(renderer, color);
@@ -95,11 +119,9 @@ void ui_draw_filled_rect(SDL_Renderer *renderer, SDL_Rect rect, SDL_Color color)
 void ui_draw_bordered_rect(SDL_Renderer *renderer, SDL_Rect rect,
                            SDL_Color fill_color, SDL_Color border_color,
                            int border_width) {
-    // Fill
     set_render_color(renderer, fill_color);
     SDL_RenderFillRect(renderer, &rect);
 
-    // Border (draw multiple rects for thickness)
     set_render_color(renderer, border_color);
     for (int i = 0; i < border_width; i++) {
         SDL_Rect border = {
@@ -118,7 +140,7 @@ void ui_draw_bordered_rect(SDL_Renderer *renderer, SDL_Rect rect,
 
 void ui_list_init(list_view_t *list, int item_height) {
     if (!list) return;
-    list->item_height = item_height > 0 ? item_height : 40;
+    list->item_height = item_height > 0 ? item_height : 44;
     list->selected_index = 0;
     list->scroll_offset = 0;
     list->visible_items = 0;
@@ -132,7 +154,6 @@ void ui_draw_list(SDL_Renderer *renderer, list_view_t *list, TTF_Font *font,
 
     list->visible_items = height / list->item_height;
 
-    // Adjust scroll if selection is out of view
     if (list->selected_index < list->scroll_offset) {
         list->scroll_offset = list->selected_index;
     }
@@ -140,41 +161,39 @@ void ui_draw_list(SDL_Renderer *renderer, list_view_t *list, TTF_Font *font,
         list->scroll_offset = list->selected_index - list->visible_items + 1;
     }
 
-    // Render visible items
     for (int i = 0; i < list->visible_items && (i + list->scroll_offset) < list->item_count; i++) {
         int index = i + list->scroll_offset;
         list_item_t *item = &list->items[index];
-
         int item_y = y + (i * list->item_height);
+        int is_selected = (index == list->selected_index);
 
-        // Background for selected item
-        if (index == list->selected_index) {
-            SDL_Rect bg = {x, item_y, width - 6, list->item_height};
+        // Selection highlight bar
+        if (is_selected) {
+            SDL_Rect bg = {x, item_y, width - 6, list->item_height - 2};
             ui_draw_filled_rect(renderer, bg, COLOR_SELECTED);
         }
 
-        // Draw cursor for selected
-        if (index == list->selected_index) {
-            ui_draw_text(renderer, font, ">", x + 8, item_y + (list->item_height - 12) / 2,
-                        COLOR_TEXT_PRIMARY, TEXT_ALIGN_LEFT);
+        // Golden cursor for selected item
+        if (is_selected) {
+            ui_draw_text(renderer, font, "\x10", x + 6, item_y + (list->item_height - 14) / 2,
+                        COLOR_CURSOR, TEXT_ALIGN_LEFT);
         }
 
-        // Draw item text
-        SDL_Color text_color = (index == list->selected_index) ?
-            COLOR_GB_DARKEST : COLOR_TEXT_PRIMARY;
-        ui_draw_text_truncated(renderer, font, item->text, x + 32,
-                               item_y + (list->item_height - 12) / 2,
+        // Item text
+        SDL_Color text_color = COLOR_TEXT_PRIMARY;
+        ui_draw_text_truncated(renderer, font, item->text, x + 28,
+                               item_y + (list->item_height - 14) / 2,
                                width - 50, text_color);
 
-        // Draw subtext if present
+        // Subtext (state)
         if (strlen(item->subtext) > 0) {
+            SDL_Color sub_color = COLOR_TEXT_SECONDARY;
             ui_draw_text(renderer, font, item->subtext, x + width - 16,
-                        item_y + (list->item_height - 12) / 2,
-                        text_color, TEXT_ALIGN_RIGHT);
+                        item_y + (list->item_height - 14) / 2,
+                        sub_color, TEXT_ALIGN_RIGHT);
         }
     }
 
-    // Scroll indicator if needed
     if (list->item_count > list->visible_items) {
         ui_draw_scrollbar(renderer, x + width - 4, y, height,
                           list->item_count, list->visible_items, list->scroll_offset);
@@ -186,7 +205,6 @@ void ui_list_navigate(list_view_t *list, int delta) {
 
     list->selected_index += delta;
 
-    // Wrap around
     if (list->selected_index < 0) {
         list->selected_index = list->item_count - 1;
     } else if (list->selected_index >= list->item_count) {
@@ -195,7 +213,7 @@ void ui_list_navigate(list_view_t *list, int delta) {
 }
 
 /* ============================================
- * Tab Bar
+ * Tab Bar - Clean horizontal tabs
  * ============================================ */
 
 void ui_draw_tab_bar(SDL_Renderer *renderer, tab_bar_t *tabs, TTF_Font *font,
@@ -204,47 +222,42 @@ void ui_draw_tab_bar(SDL_Renderer *renderer, tab_bar_t *tabs, TTF_Font *font,
         return;
     }
 
-    int tab_height = 32;
-
-    // Calculate visible tabs (max 4)
+    int tab_height = 28;
     int visible_count = tabs->tab_count < MAX_VISIBLE_TABS ? tabs->tab_count : MAX_VISIBLE_TABS;
     int tab_width = width / visible_count;
 
-    // Ensure visible_start keeps active tab visible
     if (tabs->active_tab < tabs->visible_start) {
         tabs->visible_start = tabs->active_tab;
     } else if (tabs->active_tab >= tabs->visible_start + visible_count) {
         tabs->visible_start = tabs->active_tab - visible_count + 1;
     }
-
-    // Clamp visible_start
     if (tabs->visible_start < 0) tabs->visible_start = 0;
     if (tabs->visible_start > tabs->tab_count - visible_count) {
         tabs->visible_start = tabs->tab_count - visible_count;
     }
     if (tabs->visible_start < 0) tabs->visible_start = 0;
 
-    // Draw L1/R1 indicators (show arrows if more tabs exist)
-    const char *left_indicator = (tabs->visible_start > 0) ? "<<L1" : "<L1";
-    const char *right_indicator = (tabs->visible_start + visible_count < tabs->tab_count) ? "R1>>" : "R1>";
-    ui_draw_text(renderer, font, left_indicator, x - 30, y + 10, COLOR_TEXT_SECONDARY, TEXT_ALIGN_LEFT);
-    ui_draw_text(renderer, font, right_indicator, x + width + 5, y + 10, COLOR_TEXT_SECONDARY, TEXT_ALIGN_LEFT);
+    // L1/R1 arrows if more tabs exist
+    if (tabs->visible_start > 0) {
+        ui_draw_text(renderer, font, "<", x - 14, y + 6, COLOR_CURSOR, TEXT_ALIGN_LEFT);
+    }
+    if (tabs->visible_start + visible_count < tabs->tab_count) {
+        ui_draw_text(renderer, font, ">", x + width + 4, y + 6, COLOR_CURSOR, TEXT_ALIGN_LEFT);
+    }
 
-    // Draw only visible tabs
     for (int i = 0; i < visible_count; i++) {
         int tab_index = tabs->visible_start + i;
         if (tab_index >= tabs->tab_count) break;
 
         int tab_x = x + (i * tab_width);
+        int is_active = (tab_index == tabs->active_tab);
 
-        SDL_Color color = (tab_index == tabs->active_tab) ?
-            COLOR_TEXT_PRIMARY : COLOR_TEXT_SECONDARY;
+        // Tab label
+        SDL_Color color = is_active ? COLOR_TAB_ACTIVE : COLOR_TAB_INACTIVE;
 
-        // Draw tab text (truncated to MAX_TAB_LABEL_LEN chars)
         const char *tab_name = tabs->tabs[tab_index];
         if (!tab_name) tab_name = "???";
 
-        // Truncate long names
         char truncated[MAX_TAB_LABEL_LEN + 1];
         if (strlen(tab_name) > MAX_TAB_LABEL_LEN) {
             strncpy(truncated, tab_name, MAX_TAB_LABEL_LEN - 1);
@@ -256,18 +269,18 @@ void ui_draw_tab_bar(SDL_Renderer *renderer, tab_bar_t *tabs, TTF_Font *font,
         }
 
         ui_draw_text(renderer, font, truncated,
-                    tab_x + tab_width / 2, y + 8, color, TEXT_ALIGN_CENTER);
+                    tab_x + tab_width / 2, y + 6, color, TEXT_ALIGN_CENTER);
 
-        // Underline active tab
-        if (tab_index == tabs->active_tab) {
-            SDL_Rect underline = {tab_x + 4, y + tab_height - 4, tab_width - 8, 2};
-            ui_draw_filled_rect(renderer, underline, COLOR_ACCENT);
+        // Golden underline for active tab
+        if (is_active) {
+            SDL_Rect underline = {tab_x + 4, y + tab_height - 3, tab_width - 8, 3};
+            ui_draw_filled_rect(renderer, underline, COLOR_TAB_UNDERLINE);
         }
     }
 
-    // Bottom border
+    // Separator line under tabs
     SDL_Rect border = {x, y + tab_height, width, 1};
-    ui_draw_filled_rect(renderer, border, COLOR_BORDER);
+    ui_draw_filled_rect(renderer, border, COLOR_BORDER_INNER);
 }
 
 void ui_tab_navigate(tab_bar_t *tabs, int delta) {
@@ -275,7 +288,6 @@ void ui_tab_navigate(tab_bar_t *tabs, int delta) {
 
     tabs->active_tab += delta;
 
-    // Wrap around
     if (tabs->active_tab < 0) {
         tabs->active_tab = tabs->tab_count - 1;
     } else if (tabs->active_tab >= tabs->tab_count) {
@@ -292,22 +304,20 @@ void ui_draw_button(SDL_Renderer *renderer, ui_button_t *button, TTF_Font *font)
 
     SDL_Rect rect = {button->x, button->y, button->width, button->height};
 
-    // Background
-    SDL_Color bg_color = button->is_primary ? COLOR_ACCENT : COLOR_PANEL;
-    SDL_Color text_color = button->is_primary ? COLOR_GB_DARKEST : COLOR_TEXT_PRIMARY;
-
     if (button->is_selected) {
-        bg_color = COLOR_TEXT_PRIMARY;
-        text_color = COLOR_GB_DARKEST;
+        ui_draw_rpg_window(renderer, rect);
+        ui_draw_text(renderer, font, button->label,
+                    button->x + button->width / 2,
+                    button->y + (button->height - 14) / 2,
+                    COLOR_CURSOR, TEXT_ALIGN_CENTER);
+    } else {
+        SDL_Color bg_color = button->is_primary ? COLOR_BG_HOVER : COLOR_BG_PANEL;
+        ui_draw_bordered_rect(renderer, rect, bg_color, COLOR_BORDER_INNER, 1);
+        ui_draw_text(renderer, font, button->label,
+                    button->x + button->width / 2,
+                    button->y + (button->height - 14) / 2,
+                    COLOR_TEXT_PRIMARY, TEXT_ALIGN_CENTER);
     }
-
-    ui_draw_bordered_rect(renderer, rect, bg_color, COLOR_BORDER, 2);
-
-    // Label (centered)
-    ui_draw_text(renderer, font, button->label,
-                button->x + button->width / 2,
-                button->y + (button->height - 12) / 2,
-                text_color, TEXT_ALIGN_CENTER);
 }
 
 /* ============================================
@@ -317,22 +327,19 @@ void ui_draw_button(SDL_Renderer *renderer, ui_button_t *button, TTF_Font *font)
 void ui_draw_toggle(SDL_Renderer *renderer, int x, int y, int is_on) {
     if (!renderer) return;
 
-    int width = 40;
-    int height = 20;
+    int width = 44;
+    int height = 22;
 
-    // Background
     SDL_Color bg = is_on ? COLOR_STATE_ON : COLOR_STATE_OFF;
     SDL_Rect track = {x, y, width, height};
     ui_draw_filled_rect(renderer, track, bg);
 
-    // Border
-    set_render_color(renderer, COLOR_BORDER);
+    set_render_color(renderer, COLOR_BORDER_OUTER);
     SDL_RenderDrawRect(renderer, &track);
 
-    // Knob
-    int knob_x = is_on ? (x + width - 18) : (x + 2);
-    SDL_Rect knob = {knob_x, y + 2, 16, 16};
-    ui_draw_filled_rect(renderer, knob, COLOR_TEXT_PRIMARY);
+    int knob_x = is_on ? (x + width - 20) : (x + 2);
+    SDL_Rect knob = {knob_x, y + 2, 18, 18};
+    ui_draw_filled_rect(renderer, knob, COLOR_WHITE);
 }
 
 /* ============================================
@@ -343,17 +350,13 @@ void ui_draw_slider(SDL_Renderer *renderer, int x, int y, int width,
                     float value, float min_val, float max_val) {
     if (!renderer || max_val <= min_val) return;
 
-    int height = 16;
+    int height = 18;
 
-    // Background track
     SDL_Rect track = {x, y, width, height};
-    ui_draw_filled_rect(renderer, track, COLOR_PANEL);
-
-    // Border
-    set_render_color(renderer, COLOR_BORDER);
+    ui_draw_filled_rect(renderer, track, COLOR_BG_DARK);
+    set_render_color(renderer, COLOR_BORDER_INNER);
     SDL_RenderDrawRect(renderer, &track);
 
-    // Fill based on value
     float percent = (value - min_val) / (max_val - min_val);
     if (percent < 0) percent = 0;
     if (percent > 1) percent = 1;
@@ -361,32 +364,36 @@ void ui_draw_slider(SDL_Renderer *renderer, int x, int y, int width,
     int fill_width = (int)((width - 4) * percent);
     if (fill_width > 0) {
         SDL_Rect fill = {x + 2, y + 2, fill_width, height - 4};
-        ui_draw_filled_rect(renderer, fill, COLOR_ACCENT);
+        ui_draw_filled_rect(renderer, fill, COLOR_CURSOR);
     }
 }
 
 /* ============================================
- * Header Bar
+ * Header Bar - RPG-style title window
  * ============================================ */
 
 void ui_draw_header(SDL_Renderer *renderer, TTF_Font *font_title,
                     TTF_Font *font_status, const char *title, int is_connected) {
     if (!renderer || !font_title) return;
 
-    SDL_Rect header = {10, 10, 620, 40};
+    // Header window
+    SDL_Rect header = {8, 6, 624, 42};
+    ui_draw_rpg_window(renderer, header);
 
-    // Background
-    ui_draw_bordered_rect(renderer, header, COLOR_PANEL, COLOR_BORDER, 2);
+    // Title
+    ui_draw_text(renderer, font_title, title, 320, 16,
+                COLOR_WHITE, TEXT_ALIGN_CENTER);
 
-    // Title (centered)
-    ui_draw_text(renderer, font_title, title, 320, 22,
-                COLOR_TEXT_PRIMARY, TEXT_ALIGN_CENTER);
-
-    // Connection status (right side)
+    // Connection status dot + text
     if (font_status) {
+        SDL_Color status_color = is_connected ? COLOR_ON : COLOR_OFF;
         const char *status = is_connected ? "ONLINE" : "OFFLINE";
-        SDL_Color status_color = is_connected ? COLOR_ACCENT : COLOR_TEXT_SECONDARY;
-        ui_draw_text(renderer, font_status, status, 610, 28,
+
+        // Status dot
+        SDL_Rect dot = {590, 22, 8, 8};
+        ui_draw_filled_rect(renderer, dot, status_color);
+
+        ui_draw_text(renderer, font_status, status, 586, 20,
                     status_color, TEXT_ALIGN_RIGHT);
     }
 }
@@ -399,18 +406,22 @@ void ui_draw_button_hints(SDL_Renderer *renderer, TTF_Font *font,
                           const char **hints, int count) {
     if (!renderer || !font || !hints || count == 0) return;
 
-    int y = 455; // Near bottom
-    int x_offset = 20;
-    int spacing = 150;
+    // Bottom hints in a subtle RPG window
+    SDL_Rect bar = {8, 452, 624, 24};
+    ui_draw_rpg_window(renderer, bar);
+
+    int total_width = 600;
+    int spacing = total_width / count;
 
     for (int i = 0; i < count; i++) {
-        ui_draw_text(renderer, font, hints[i], x_offset + (i * spacing), y,
-                    COLOR_TEXT_SECONDARY, TEXT_ALIGN_LEFT);
+        ui_draw_text(renderer, font, hints[i],
+                    20 + (i * spacing) + spacing / 2, 456,
+                    COLOR_TEXT_SECONDARY, TEXT_ALIGN_CENTER);
     }
 }
 
 /* ============================================
- * Dialog
+ * Dialog - RPG window style
  * ============================================ */
 
 void ui_draw_dialog(SDL_Renderer *renderer, dialog_t *dialog,
@@ -419,52 +430,34 @@ void ui_draw_dialog(SDL_Renderer *renderer, dialog_t *dialog,
 
     // Dim background
     SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
-    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 180);
+    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 160);
     SDL_Rect screen = {0, 0, 640, 480};
     SDL_RenderFillRect(renderer, &screen);
     SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_NONE);
 
-    // Dialog box
+    // Dialog window
     SDL_Rect box = {120, 140, 400, 200};
-    ui_draw_bordered_rect(renderer, box, COLOR_PANEL, COLOR_BORDER, 2);
+    ui_draw_rpg_window(renderer, box);
 
-    // Title
     if (font_title) {
         ui_draw_text(renderer, font_title, dialog->title,
-                    320, 160, COLOR_TEXT_PRIMARY, TEXT_ALIGN_CENTER);
+                    320, 160, COLOR_WHITE, TEXT_ALIGN_CENTER);
     }
 
-    // Message
     if (font_body) {
         ui_draw_text(renderer, font_body, dialog->message,
-                    320, 210, COLOR_TEXT_PRIMARY, TEXT_ALIGN_CENTER);
+                    320, 210, COLOR_GRAY, TEXT_ALIGN_CENTER);
     }
 
-    // Options
-    SDL_Color yes_color = (dialog->selected_option == 0) ?
-        COLOR_ACCENT : COLOR_TEXT_SECONDARY;
-    SDL_Color no_color = (dialog->selected_option == 1) ?
-        COLOR_ACCENT : COLOR_TEXT_SECONDARY;
-
     if (font_body) {
-        // Draw selection indicator
-        if (dialog->selected_option == 0) {
-            ui_draw_text(renderer, font_body, "> YES <", 220, 280,
-                        yes_color, TEXT_ALIGN_CENTER);
-            ui_draw_text(renderer, font_body, "NO", 420, 280,
-                        no_color, TEXT_ALIGN_CENTER);
-        } else {
-            ui_draw_text(renderer, font_body, "YES", 220, 280,
-                        yes_color, TEXT_ALIGN_CENTER);
-            ui_draw_text(renderer, font_body, "> NO <", 420, 280,
-                        no_color, TEXT_ALIGN_CENTER);
-        }
-    }
+        SDL_Color yes_color = (dialog->selected_option == 0) ? COLOR_CURSOR : COLOR_GRAY;
+        SDL_Color no_color = (dialog->selected_option == 1) ? COLOR_CURSOR : COLOR_GRAY;
 
-    // Hint
-    if (font_body) {
-        ui_draw_text(renderer, font_body, "[A] Confirm  [B] Cancel",
-                    320, 310, COLOR_TEXT_SECONDARY, TEXT_ALIGN_CENTER);
+        const char *yes_text = (dialog->selected_option == 0) ? "> YES" : "  YES";
+        const char *no_text = (dialog->selected_option == 1) ? "> NO" : "  NO";
+
+        ui_draw_text(renderer, font_body, yes_text, 220, 280, yes_color, TEXT_ALIGN_CENTER);
+        ui_draw_text(renderer, font_body, no_text, 420, 280, no_color, TEXT_ALIGN_CENTER);
     }
 }
 
@@ -481,17 +474,16 @@ void ui_draw_scrollbar(SDL_Renderer *renderer, int x, int y, int height,
                        int total_items, int visible_items, int scroll_offset) {
     if (!renderer || total_items <= visible_items) return;
 
-    // Calculate scrollbar dimensions
     int scrollbar_height = (visible_items * height) / total_items;
-    if (scrollbar_height < 10) scrollbar_height = 10;
+    if (scrollbar_height < 12) scrollbar_height = 12;
 
     int scrollbar_y = y + ((scroll_offset * (height - scrollbar_height)) / (total_items - visible_items));
 
-    // Draw track
-    SDL_Rect track = {x, y, 4, height};
-    ui_draw_filled_rect(renderer, track, COLOR_GB_DARKEST);
+    // Track
+    SDL_Rect track = {x, y, 6, height};
+    ui_draw_filled_rect(renderer, track, COLOR_BG_DARK);
 
-    // Draw thumb
-    SDL_Rect thumb = {x, scrollbar_y, 4, scrollbar_height};
-    ui_draw_filled_rect(renderer, thumb, COLOR_BORDER);
+    // Thumb
+    SDL_Rect thumb = {x, scrollbar_y, 6, scrollbar_height};
+    ui_draw_filled_rect(renderer, thumb, COLOR_BORDER_OUTER);
 }

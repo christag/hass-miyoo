@@ -78,7 +78,7 @@ list_screen_t* list_screen_create(SDL_Renderer *renderer,
 
     screen->entity_list.items = screen->list_items;
     screen->entity_list.item_count = 0;
-    ui_list_init(&screen->entity_list, 40);
+    ui_list_init(&screen->entity_list, 44);
 
     strcpy(screen->status_message, "");
 
@@ -212,11 +212,7 @@ void list_screen_render(list_screen_t *screen) {
     TTF_Font *font_body = fonts_get(screen->fonts, FONT_SIZE_BODY);
     TTF_Font *font_small = fonts_get(screen->fonts, FONT_SIZE_SMALL);
 
-    // Clear background
-    set_render_color(r, COLOR_BACKGROUND);
-    SDL_RenderClear(r);
-
-    // Header with view mode indicator
+    // Header
     const char *header_text;
     if (screen->view_mode == VIEW_BY_DOMAIN) {
         header_text = "BY DOMAIN";
@@ -228,21 +224,26 @@ void list_screen_render(list_screen_t *screen) {
     int is_online = screen->cache_mgr ? cache_manager_is_online(screen->cache_mgr) : 0;
     ui_draw_header(r, font_header, font_small, header_text, is_online);
 
-    // Tab bar (if we have tabs - not in favorites mode)
+    // Tab bar
+    int content_y = 52;
     if (screen->tab_count > 0 && screen->view_mode != VIEW_FAVORITES) {
-        ui_draw_tab_bar(r, &screen->tabs, font_small, 60, 55, 520);
+        ui_draw_tab_bar(r, &screen->tabs, font_small, 60, content_y, 520);
+        content_y += 32;
     }
 
-    // Entity count (positioned below tabs, right-aligned)
+    // Entity count
     char count_str[32];
     snprintf(count_str, sizeof(count_str), "%d items", screen->entity_list.item_count);
-    ui_draw_text(r, font_small, count_str, 610, 78, COLOR_TEXT_SECONDARY, TEXT_ALIGN_RIGHT);
+    ui_draw_text(r, font_small, count_str, 620, content_y + 2, COLOR_TEXT_SECONDARY, TEXT_ALIGN_RIGHT);
+    content_y += 16;
 
-    // Entity list
+    // Entity list area
+    int list_y = content_y;
+    int list_bottom = 448;
+    int list_height = list_bottom - list_y;
+    int item_height = 44;  // Taller items for readability
+
     if (screen->entity_list.item_count > 0) {
-        int list_y = 95;
-        int list_height = 340;
-        int item_height = screen->entity_list.item_height;
         int visible = list_height / item_height;
 
         // Adjust scroll
@@ -257,70 +258,74 @@ void list_screen_render(list_screen_t *screen) {
             int idx = i + screen->entity_list.scroll_offset;
             list_item_t *item = &screen->list_items[idx];
             int y = list_y + (i * item_height);
-
-            // Selection background
             int is_selected = (idx == screen->entity_list.selected_index);
+
+            // Selection highlight
             if (is_selected) {
-                SDL_Rect bg = {20, y, 600, item_height - 2};
+                SDL_Rect bg = {12, y, 616, item_height - 2};
                 ui_draw_filled_rect(r, bg, COLOR_SELECTED);
             }
 
-            SDL_Color text_color = is_selected ? COLOR_GB_DARKEST : COLOR_TEXT_PRIMARY;
-            SDL_Color sub_color = is_selected ? COLOR_GB_DARK : COLOR_TEXT_SECONDARY;
-
-            // Cursor
-            if (is_selected) {
-                ui_draw_text(r, font_body, ">", 25, y + 10, text_color, TEXT_ALIGN_LEFT);
+            // Subtle separator line between items
+            if (!is_selected && i > 0) {
+                SDL_Rect sep = {30, y, 580, 1};
+                ui_draw_filled_rect(r, sep, COLOR_BORDER_INNER);
             }
 
-            // Icon
-            icons_draw(screen->icons, item->icon_name, 45, y + 8, 16);
+            // Golden cursor arrow for selected
+            if (is_selected) {
+                ui_draw_text(r, font_body, ">", 18, y + 13, COLOR_CURSOR, TEXT_ALIGN_LEFT);
+            }
 
-            // Name (truncated)
-            ui_draw_text_truncated(r, font_body, item->text, 70, y + 10, 400, text_color);
+            // Icon (scaled up slightly)
+            icons_draw(screen->icons, item->icon_name, 40, y + 12, 20);
 
-            // State
-            ui_draw_text(r, font_small, item->subtext, 600, y + 12, sub_color, TEXT_ALIGN_RIGHT);
+            // Entity name - white text, always readable
+            ui_draw_text_truncated(r, font_body, item->text, 68, y + 13, 400, COLOR_WHITE);
 
-            // Favorite indicator
+            // State text - color coded
+            SDL_Color state_color = COLOR_TEXT_SECONDARY;
+            if (strcmp(item->subtext, "on") == 0) {
+                state_color = COLOR_STATE_ON;
+            } else if (strcmp(item->subtext, "off") == 0) {
+                state_color = COLOR_STATE_OFF;
+            } else if (strcmp(item->subtext, "unavailable") == 0) {
+                state_color = COLOR_UNAVAIL;
+            }
+            ui_draw_text(r, font_small, item->subtext, 610, y + 15, state_color, TEXT_ALIGN_RIGHT);
+
+            // Favorite star
             if (screen->cache_mgr && item->user_data) {
                 ha_entity_t *entity = (ha_entity_t*)item->user_data;
                 if (cache_manager_is_favorite(screen->cache_mgr, entity->entity_id)) {
-                    icons_draw(screen->icons, "star_filled", 480, y + 10, 16);
+                    icons_draw(screen->icons, "star_filled", 490, y + 14, 16);
                 }
             }
         }
 
         // Scrollbar
         if (screen->entity_list.item_count > visible) {
-            ui_draw_scrollbar(r, 616, list_y, list_height,
+            ui_draw_scrollbar(r, 626, list_y, list_height,
                              screen->entity_list.item_count, visible,
                              screen->entity_list.scroll_offset);
         }
     } else {
-        // No entities message - different for favorites mode
         if (screen->view_mode == VIEW_FAVORITES) {
             ui_draw_text(r, font_body, "No favorites yet",
-                        320, 200, COLOR_TEXT_SECONDARY, TEXT_ALIGN_CENTER);
+                        320, 220, COLOR_TEXT_SECONDARY, TEXT_ALIGN_CENTER);
             ui_draw_text(r, font_small, "Press Y on any entity to add",
-                        320, 240, COLOR_TEXT_SECONDARY, TEXT_ALIGN_CENTER);
+                        320, 260, COLOR_TEXT_SECONDARY, TEXT_ALIGN_CENTER);
         } else {
             ui_draw_text(r, font_body, "No entities found",
-                        320, 200, COLOR_TEXT_SECONDARY, TEXT_ALIGN_CENTER);
+                        320, 220, COLOR_TEXT_SECONDARY, TEXT_ALIGN_CENTER);
             ui_draw_text(r, font_small, "Press START to sync",
-                        320, 240, COLOR_TEXT_SECONDARY, TEXT_ALIGN_CENTER);
+                        320, 260, COLOR_TEXT_SECONDARY, TEXT_ALIGN_CENTER);
         }
     }
 
-    // Status message
-    if (strlen(screen->status_message) > 0) {
-        ui_draw_text(r, font_small, screen->status_message,
-                    320, 440, COLOR_TEXT_SECONDARY, TEXT_ALIGN_CENTER);
-    }
-
     // Button hints
-    const char *hints[] = {"[A] Toggle", "[X] View", "[SEL] Detail", "[START] Sync"};
-    ui_draw_button_hints(r, font_body, hints, 4);
+    const char *hints[] = {"A:Act", "X:View", "Sel:Info", "St:Sync"};
+    ui_draw_button_hints(r, font_small, hints, 4);
 }
 
 void list_screen_refresh(list_screen_t *screen) {

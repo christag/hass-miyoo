@@ -15,9 +15,9 @@
  * Font size definitions
  */
 typedef enum {
-    FONT_SIZE_SMALL  = 8,   // Button hints, status text
-    FONT_SIZE_BODY   = 12,  // List items, normal text
-    FONT_SIZE_HEADER = 16   // Screen titles, headers
+    FONT_SIZE_SMALL  = 10,  // Button hints, status text
+    FONT_SIZE_BODY   = 14,  // List items, normal text
+    FONT_SIZE_HEADER = 18   // Screen titles, headers
 } font_size_t;
 
 /**
