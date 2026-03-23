@@ -372,19 +372,31 @@ static void render(app_state_t *app) {
         frame_count++;
     }
 
-    // Redirect all rendering to off-screen texture
-    if (app->render_target) {
-        SDL_SetRenderTarget(app->renderer, app->render_target);
-    }
+    // NOTE: Render target textures don't work on MMIYOO driver.
+    // We render directly to the framebuffer and use a background
+    // texture blit to force-clear every pixel each frame.
 
-    // FORCE clear the render target by drawing a full-screen opaque rect.
-    // SDL_RenderClear does NOT work reliably on the MMIYOO driver, even
-    // when rendering to a texture target. This explicit fill guarantees
-    // every pixel is overwritten, preventing ghost artifacts.
-    SDL_SetRenderDrawBlendMode(app->renderer, SDL_BLENDMODE_NONE);
-    SDL_SetRenderDrawColor(app->renderer, 16, 16, 48, 255);
-    SDL_Rect fullscreen_clear = {0, 0, SCREEN_WIDTH, SCREEN_HEIGHT};
-    SDL_RenderFillRect(app->renderer, &fullscreen_clear);
+    // FORCE clear by blitting a solid background texture.
+    // The MMIYOO driver ignores SDL_RenderClear AND SDL_RenderFillRect
+    // for clearing. But SDL_RenderCopy from a texture DOES overwrite pixels.
+    // We create a solid-color texture once and blit it every frame.
+    static SDL_Texture *bg_texture = NULL;
+    if (!bg_texture) {
+        SDL_Surface *bg_surf = SDL_CreateRGBSurface(0, SCREEN_WIDTH, SCREEN_HEIGHT, 32,
+            0x00FF0000, 0x0000FF00, 0x000000FF, 0xFF000000);
+        if (bg_surf) {
+            SDL_FillRect(bg_surf, NULL, SDL_MapRGBA(bg_surf->format, 16, 16, 48, 255));
+            bg_texture = SDL_CreateTextureFromSurface(app->renderer, bg_surf);
+            SDL_FreeSurface(bg_surf);
+            if (bg_texture) {
+                SDL_SetTextureBlendMode(bg_texture, SDL_BLENDMODE_NONE);
+                printf("Background clear texture created\n");
+            }
+        }
+    }
+    if (bg_texture) {
+        SDL_RenderCopy(app->renderer, bg_texture, NULL, NULL);
+    }
 
     // Render current screen
     if (app->current_screen == SCREEN_SETUP && app->setup_screen) {
@@ -409,12 +421,6 @@ static void render(app_state_t *app) {
         render_exit_dialog(app);
     }
 
-    // Switch back to screen and blit the completed texture
-    if (app->render_target) {
-        SDL_SetRenderTarget(app->renderer, NULL);
-        SDL_SetRenderDrawBlendMode(app->renderer, SDL_BLENDMODE_NONE);
-        SDL_RenderCopy(app->renderer, app->render_target, NULL, NULL);
-    }
 
     SDL_RenderPresent(app->renderer);
 }
