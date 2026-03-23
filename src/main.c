@@ -376,34 +376,26 @@ static void render(app_state_t *app) {
     // We render directly to the framebuffer and use a background
     // texture blit to force-clear every pixel each frame.
 
-    // FORCE clear by blitting a solid background texture.
-    // The MMIYOO driver ignores SDL_RenderClear AND SDL_RenderFillRect
-    // for clearing. But SDL_RenderCopy from a texture DOES overwrite pixels.
+    // FORCE clear by blitting a tiny 1x1 texture scaled to full screen.
+    // The MMIYOO driver ignores SDL_RenderClear and SDL_RenderFillRect.
+    // Use a 1x1 pixel texture with BLENDMODE_NONE to overwrite all pixels.
     static SDL_Texture *bg_texture = NULL;
     if (!bg_texture) {
-        // Use SDL_PIXELFORMAT_RGBA8888 explicitly for MMIYOO compatibility
         bg_texture = SDL_CreateTexture(app->renderer,
-            SDL_PIXELFORMAT_RGBA8888,
-            SDL_TEXTUREACCESS_STATIC,
-            SCREEN_WIDTH, SCREEN_HEIGHT);
+            SDL_PIXELFORMAT_RGB565,
+            SDL_TEXTUREACCESS_STATIC, 1, 1);
         if (bg_texture) {
-            // Fill with background color (16, 16, 48)
-            // RGBA8888 format: each pixel is 0xRRGGBBAA
-            Uint32 *pixels = malloc(SCREEN_WIDTH * SCREEN_HEIGHT * 4);
-            if (pixels) {
-                Uint32 bg_color = (16 << 24) | (16 << 16) | (48 << 8) | 255;
-                for (int i = 0; i < SCREEN_WIDTH * SCREEN_HEIGHT; i++) {
-                    pixels[i] = bg_color;
-                }
-                SDL_UpdateTexture(bg_texture, NULL, pixels, SCREEN_WIDTH * 4);
-                free(pixels);
-                SDL_SetTextureBlendMode(bg_texture, SDL_BLENDMODE_NONE);
-                printf("Background clear texture created\n");
-            }
+            // RGB565: R=16>>3=2, G=16>>2=4, B=48>>3=6
+            // Pack: (2<<11) | (4<<5) | 6 = 4230
+            Uint16 pixel = (2 << 11) | (4 << 5) | 6;
+            SDL_UpdateTexture(bg_texture, NULL, &pixel, 2);
+            SDL_SetTextureBlendMode(bg_texture, SDL_BLENDMODE_NONE);
+            printf("Background clear texture created (1x1 RGB565)\n");
         }
     }
     if (bg_texture) {
-        SDL_RenderCopy(app->renderer, bg_texture, NULL, NULL);
+        SDL_Rect dst = {0, 0, SCREEN_WIDTH, SCREEN_HEIGHT};
+        SDL_RenderCopy(app->renderer, bg_texture, NULL, &dst);
     }
 
     // Render current screen
