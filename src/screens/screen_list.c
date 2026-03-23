@@ -104,6 +104,13 @@ void list_screen_destroy(list_screen_t *screen) {
 int list_screen_handle_input(list_screen_t *screen, SDL_Event *event) {
     if (!screen || !event || event->type != SDL_KEYDOWN) return 0;
 
+    // Cooldown: ignore inputs within 150ms of last accepted input.
+    // Prevents key-repeat spam from MMIYOO driver causing rapid cycling.
+    static Uint32 last_input_time = 0;
+    Uint32 now = SDL_GetTicks();
+    if (now - last_input_time < 150) return 0;
+    last_input_time = now;
+
     // View mode toggle (Y button) - cycles Domain → Room → Favorites → Domain
     // NOTE: X button (LSHIFT) triggers MMIYOO virtual keyboard, so we use Y instead
     if (input_button_pressed(BTN_Y)) {
