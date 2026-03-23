@@ -376,26 +376,15 @@ static void render(app_state_t *app) {
     // We render directly to the framebuffer and use a background
     // texture blit to force-clear every pixel each frame.
 
-    // FORCE clear by blitting a tiny 1x1 texture scaled to full screen.
-    // The MMIYOO driver ignores SDL_RenderClear and SDL_RenderFillRect.
-    // Use a 1x1 pixel texture with BLENDMODE_NONE to overwrite all pixels.
-    static SDL_Texture *bg_texture = NULL;
-    if (!bg_texture) {
-        bg_texture = SDL_CreateTexture(app->renderer,
-            SDL_PIXELFORMAT_RGB565,
-            SDL_TEXTUREACCESS_STATIC, 1, 1);
-        if (bg_texture) {
-            // RGB565: R=16>>3=2, G=16>>2=4, B=48>>3=6
-            // Pack: (2<<11) | (4<<5) | 6 = 4230
-            Uint16 pixel = (2 << 11) | (4 << 5) | 6;
-            SDL_UpdateTexture(bg_texture, NULL, &pixel, 2);
-            SDL_SetTextureBlendMode(bg_texture, SDL_BLENDMODE_NONE);
-            printf("Background clear texture created (1x1 RGB565)\n");
-        }
-    }
-    if (bg_texture) {
-        SDL_Rect dst = {0, 0, SCREEN_WIDTH, SCREEN_HEIGHT};
-        SDL_RenderCopy(app->renderer, bg_texture, NULL, &dst);
+    // Clear: SDL_RenderClear + FillRect. These don't fully work on MMIYOO
+    // but they help. The real fix is that every screen render function must
+    // paint opaque backgrounds for ALL items, not just selected ones.
+    SDL_SetRenderDrawBlendMode(app->renderer, SDL_BLENDMODE_NONE);
+    set_render_color(app->renderer, COLOR_BACKGROUND);
+    SDL_RenderClear(app->renderer);
+    {
+        SDL_Rect fs = {0, 0, SCREEN_WIDTH, SCREEN_HEIGHT};
+        SDL_RenderFillRect(app->renderer, &fs);
     }
 
     // Render current screen

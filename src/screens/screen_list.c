@@ -257,6 +257,12 @@ void list_screen_render(list_screen_t *screen) {
     TTF_Font *font_body = fonts_get(screen->fonts, FONT_SIZE_BODY);
     TTF_Font *font_small = fonts_get(screen->fonts, FONT_SIZE_SMALL);
 
+    // Paint entire screen background explicitly (MMIYOO clear workaround)
+    {
+        SDL_Rect full = {0, 0, 640, 480};
+        ui_draw_filled_rect(r, full, COLOR_BACKGROUND);
+    }
+
     // === HEADER (simple centered title) ===
     const char *mode_text;
     if (screen->view_mode == VIEW_BY_DOMAIN) {
@@ -301,27 +307,29 @@ void list_screen_render(list_screen_t *screen) {
             int y = list_y + (i * item_height);
             int is_selected = (idx == screen->entity_list.selected_index);
 
-            // Selection: golden bordered highlight
+            // ALWAYS draw opaque background for every item row.
+            // This overwrites any ghost artifacts from previous frames.
+            // MMIYOO driver doesn't clear properly, so we must paint every pixel.
+            {
+                SDL_Rect row_bg = {0, y, SCREEN_WIDTH, item_height};
+                ui_draw_filled_rect(r, row_bg, COLOR_BACKGROUND);
+            }
+
             if (is_selected) {
+                // Selected: highlight with golden border
                 SDL_Rect bg = {16, y + 2, 608, item_height - 4};
                 ui_draw_filled_rect(r, bg, COLOR_SELECTED);
-                // Double golden border for emphasis
                 set_render_color(r, COLOR_CURSOR);
                 SDL_Rect b1 = {16, y + 2, 608, item_height - 4};
                 SDL_RenderDrawRect(r, &b1);
                 SDL_Rect b2 = {17, y + 3, 606, item_height - 6};
                 SDL_RenderDrawRect(r, &b2);
-            }
-
-            // Separator between unselected items
-            if (!is_selected && i > 0) {
+                // Golden cursor arrow
+                ui_draw_text(r, font_header, ">", 24, y + 16, COLOR_CURSOR, TEXT_ALIGN_LEFT);
+            } else if (i > 0) {
+                // Separator between unselected items
                 SDL_Rect line = {40, y, 560, 1};
                 ui_draw_filled_rect(r, line, COLOR_BORDER_INNER);
-            }
-
-            // Golden cursor arrow
-            if (is_selected) {
-                ui_draw_text(r, font_header, ">", 24, y + 16, COLOR_CURSOR, TEXT_ALIGN_LEFT);
             }
 
             // Entity name (larger font for selected)
