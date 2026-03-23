@@ -257,12 +257,6 @@ void list_screen_render(list_screen_t *screen) {
     TTF_Font *font_body = fonts_get(screen->fonts, FONT_SIZE_BODY);
     TTF_Font *font_small = fonts_get(screen->fonts, FONT_SIZE_SMALL);
 
-    // Paint entire screen background explicitly (MMIYOO clear workaround)
-    {
-        SDL_Rect full = {0, 0, 640, 480};
-        ui_draw_filled_rect(r, full, COLOR_BACKGROUND);
-    }
-
     // === HEADER (simple centered title) ===
     const char *mode_text;
     if (screen->view_mode == VIEW_BY_DOMAIN) {
@@ -306,14 +300,6 @@ void list_screen_render(list_screen_t *screen) {
             list_item_t *item = &screen->list_items[idx];
             int y = list_y + (i * item_height);
             int is_selected = (idx == screen->entity_list.selected_index);
-
-            // ALWAYS draw opaque background for every item row.
-            // This overwrites any ghost artifacts from previous frames.
-            // MMIYOO driver doesn't clear properly, so we must paint every pixel.
-            {
-                SDL_Rect row_bg = {0, y, 640, item_height};
-                ui_draw_filled_rect(r, row_bg, COLOR_BACKGROUND);
-            }
 
             if (is_selected) {
                 // Selected: highlight with golden border
