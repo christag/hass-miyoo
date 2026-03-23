@@ -195,6 +195,60 @@ int list_screen_handle_input(list_screen_t *screen, SDL_Event *event) {
     return 0;
 }
 
+/**
+ * Draw the rotating wheel tab selector.
+ * Shows 3 tabs: prev (small/dim), current (large/bright), next (small/dim)
+ * with arrows on each side indicating more tabs available.
+ */
+static void draw_wheel_tabs(list_screen_t *screen, SDL_Renderer *r,
+                            TTF_Font *font_big, TTF_Font *font_small, int y) {
+    if (screen->tab_count == 0) return;
+
+    int center_x = 320;
+    int active = screen->tabs.active_tab;
+
+    // Left arrow if not at first tab
+    if (active > 0) {
+        ui_draw_text(r, font_small, "<< L1", 30, y + 8, COLOR_TAB_INACTIVE, TEXT_ALIGN_LEFT);
+    }
+
+    // Right arrow if not at last tab
+    if (active < screen->tab_count - 1) {
+        ui_draw_text(r, font_small, "R1 >>", 610, y + 8, COLOR_TAB_INACTIVE, TEXT_ALIGN_RIGHT);
+    }
+
+    // Previous tab (smaller, dimmer, left of center)
+    if (active > 0) {
+        const char *prev_name = screen->tabs.tabs[active - 1];
+        if (prev_name) {
+            ui_draw_text(r, font_small, prev_name, center_x - 160, y + 8,
+                        COLOR_TAB_INACTIVE, TEXT_ALIGN_CENTER);
+        }
+    }
+
+    // Current tab (LARGE, bright, centered with underline)
+    const char *cur_name = screen->tabs.tabs[active];
+    if (cur_name) {
+        ui_draw_text(r, font_big, cur_name, center_x, y + 2,
+                    COLOR_WHITE, TEXT_ALIGN_CENTER);
+
+        // Golden underline
+        int tw = 0, th = 0;
+        TTF_SizeText(font_big, cur_name, &tw, &th);
+        SDL_Rect underline = {center_x - tw/2, y + th + 6, tw, 3};
+        ui_draw_filled_rect(r, underline, COLOR_CURSOR);
+    }
+
+    // Next tab (smaller, dimmer, right of center)
+    if (active < screen->tab_count - 1) {
+        const char *next_name = screen->tabs.tabs[active + 1];
+        if (next_name) {
+            ui_draw_text(r, font_small, next_name, center_x + 160, y + 8,
+                        COLOR_TAB_INACTIVE, TEXT_ALIGN_CENTER);
+        }
+    }
+}
+
 void list_screen_render(list_screen_t *screen) {
     if (!screen) return;
 
@@ -203,41 +257,37 @@ void list_screen_render(list_screen_t *screen) {
     TTF_Font *font_body = fonts_get(screen->fonts, FONT_SIZE_BODY);
     TTF_Font *font_small = fonts_get(screen->fonts, FONT_SIZE_SMALL);
 
-    // Header
-    const char *header_text;
+    // === HEADER (simple centered title) ===
+    const char *mode_text;
     if (screen->view_mode == VIEW_BY_DOMAIN) {
-        header_text = "BY DOMAIN";
+        mode_text = "BY DOMAIN";
     } else if (screen->view_mode == VIEW_BY_ROOM) {
-        header_text = "BY ROOM";
+        mode_text = "BY ROOM";
     } else {
-        header_text = "FAVORITES";
+        mode_text = "FAVORITES";
     }
-    int is_online = screen->cache_mgr ? cache_manager_is_online(screen->cache_mgr) : 0;
-    ui_draw_header(r, font_header, font_small, header_text, is_online);
+    ui_draw_text(r, font_small, mode_text, 320, 8, COLOR_TEXT_SECONDARY, TEXT_ALIGN_CENTER);
 
-    // Tab bar
-    int content_y = 52;
+    // === ROTATING WHEEL TAB SELECTOR ===
+    int tab_y = 24;
     if (screen->tab_count > 0 && screen->view_mode != VIEW_FAVORITES) {
-        ui_draw_tab_bar(r, &screen->tabs, font_small, 60, content_y, 520);
-        content_y += 32;
+        draw_wheel_tabs(screen, r, font_header, font_small, tab_y);
+        // Separator line
+        SDL_Rect sep = {40, tab_y + 50, 560, 1};
+        ui_draw_filled_rect(r, sep, COLOR_BORDER_INNER);
     }
 
-    // Entity count
-    char count_str[32];
-    snprintf(count_str, sizeof(count_str), "%d items", screen->entity_list.item_count);
-    ui_draw_text(r, font_small, count_str, 620, content_y + 2, COLOR_TEXT_SECONDARY, TEXT_ALIGN_RIGHT);
-    content_y += 16;
-
-    // Entity list area
-    int list_y = content_y;
-    int list_bottom = 448;
+    // === ENTITY LIST ===
+    int list_y = 80;
+    int list_bottom = 440;
     int list_height = list_bottom - list_y;
-    int item_height = 44;  // Taller items for readability
+    int item_height = 56;  // Big items for readability
 
     if (screen->entity_list.item_count > 0) {
         int visible = list_height / item_height;
+        if (visible < 1) visible = 1;
 
-        // Adjust scroll
+        // Adjust scroll to keep selection visible
         if (screen->entity_list.selected_index < screen->entity_list.scroll_offset) {
             screen->entity_list.scroll_offset = screen->entity_list.selected_index;
         }
@@ -251,34 +301,35 @@ void list_screen_render(list_screen_t *screen) {
             int y = list_y + (i * item_height);
             int is_selected = (idx == screen->entity_list.selected_index);
 
-            // Selection highlight with visible border
+            // Selection: golden bordered highlight
             if (is_selected) {
-                SDL_Rect bg = {12, y + 1, 612, item_height - 3};
+                SDL_Rect bg = {16, y + 2, 608, item_height - 4};
                 ui_draw_filled_rect(r, bg, COLOR_SELECTED);
-                // Bright border around selection
+                // Double golden border for emphasis
                 set_render_color(r, COLOR_CURSOR);
-                SDL_Rect sel_border = {12, y + 1, 612, item_height - 3};
-                SDL_RenderDrawRect(r, &sel_border);
+                SDL_Rect b1 = {16, y + 2, 608, item_height - 4};
+                SDL_RenderDrawRect(r, &b1);
+                SDL_Rect b2 = {17, y + 3, 606, item_height - 6};
+                SDL_RenderDrawRect(r, &b2);
             }
 
-            // Subtle separator line between items
+            // Separator between unselected items
             if (!is_selected && i > 0) {
-                SDL_Rect sep = {30, y, 580, 1};
-                ui_draw_filled_rect(r, sep, COLOR_BORDER_INNER);
+                SDL_Rect line = {40, y, 560, 1};
+                ui_draw_filled_rect(r, line, COLOR_BORDER_INNER);
             }
 
-            // Golden cursor arrow for selected
+            // Golden cursor arrow
             if (is_selected) {
-                ui_draw_text(r, font_body, ">", 18, y + 13, COLOR_CURSOR, TEXT_ALIGN_LEFT);
+                ui_draw_text(r, font_header, ">", 24, y + 16, COLOR_CURSOR, TEXT_ALIGN_LEFT);
             }
 
-            // Icon (scaled up slightly)
-            icons_draw(screen->icons, item->icon_name, 40, y + 12, 20);
+            // Entity name (larger font for selected)
+            TTF_Font *name_font = is_selected ? font_header : font_body;
+            int name_y = is_selected ? y + 16 : y + 18;
+            ui_draw_text_truncated(r, name_font, item->text, 52, name_y, 440, COLOR_WHITE);
 
-            // Entity name - white text, always readable
-            ui_draw_text_truncated(r, font_body, item->text, 68, y + 13, 400, COLOR_WHITE);
-
-            // State text - color coded
+            // State - color coded, right side
             SDL_Color state_color = COLOR_TEXT_SECONDARY;
             if (strcmp(item->subtext, "on") == 0) {
                 state_color = COLOR_STATE_ON;
@@ -287,38 +338,21 @@ void list_screen_render(list_screen_t *screen) {
             } else if (strcmp(item->subtext, "unavailable") == 0) {
                 state_color = COLOR_UNAVAIL;
             }
-            ui_draw_text(r, font_small, item->subtext, 610, y + 15, state_color, TEXT_ALIGN_RIGHT);
-
-            // Favorite star
-            if (screen->cache_mgr && item->user_data) {
-                ha_entity_t *entity = (ha_entity_t*)item->user_data;
-                if (cache_manager_is_favorite(screen->cache_mgr, entity->entity_id)) {
-                    icons_draw(screen->icons, "star_filled", 490, y + 14, 16);
-                }
-            }
+            ui_draw_text(r, font_body, item->subtext, 610, y + 20, state_color, TEXT_ALIGN_RIGHT);
         }
 
         // Scrollbar
         if (screen->entity_list.item_count > visible) {
-            ui_draw_scrollbar(r, 626, list_y, list_height,
+            ui_draw_scrollbar(r, 630, list_y, list_height,
                              screen->entity_list.item_count, visible,
                              screen->entity_list.scroll_offset);
         }
     } else {
-        if (screen->view_mode == VIEW_FAVORITES) {
-            ui_draw_text(r, font_body, "No favorites yet",
-                        320, 220, COLOR_TEXT_SECONDARY, TEXT_ALIGN_CENTER);
-            ui_draw_text(r, font_small, "Press Y on any entity to add",
-                        320, 260, COLOR_TEXT_SECONDARY, TEXT_ALIGN_CENTER);
-        } else {
-            ui_draw_text(r, font_body, "No entities found",
-                        320, 220, COLOR_TEXT_SECONDARY, TEXT_ALIGN_CENTER);
-            ui_draw_text(r, font_small, "Press START to sync",
-                        320, 260, COLOR_TEXT_SECONDARY, TEXT_ALIGN_CENTER);
-        }
+        ui_draw_text(r, font_body, "No entities",
+                    320, 240, COLOR_TEXT_SECONDARY, TEXT_ALIGN_CENTER);
     }
 
-    // Button hints
+    // === BOTTOM HINTS ===
     const char *hints[] = {"A:Act", "Y:View", "B:Back", "St:Sync"};
     ui_draw_button_hints(r, font_small, hints, 4);
 }

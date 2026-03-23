@@ -377,10 +377,14 @@ static void render(app_state_t *app) {
         SDL_SetRenderTarget(app->renderer, app->render_target);
     }
 
-    // Clear the render target (this DOES work on textures)
+    // FORCE clear the render target by drawing a full-screen opaque rect.
+    // SDL_RenderClear does NOT work reliably on the MMIYOO driver, even
+    // when rendering to a texture target. This explicit fill guarantees
+    // every pixel is overwritten, preventing ghost artifacts.
     SDL_SetRenderDrawBlendMode(app->renderer, SDL_BLENDMODE_NONE);
-    set_render_color(app->renderer, COLOR_BACKGROUND);
-    SDL_RenderClear(app->renderer);
+    SDL_SetRenderDrawColor(app->renderer, 16, 16, 48, 255);
+    SDL_Rect fullscreen_clear = {0, 0, SCREEN_WIDTH, SCREEN_HEIGHT};
+    SDL_RenderFillRect(app->renderer, &fullscreen_clear);
 
     // Render current screen
     if (app->current_screen == SCREEN_SETUP && app->setup_screen) {
