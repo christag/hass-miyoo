@@ -311,7 +311,7 @@ void list_screen_render(list_screen_t *screen) {
             // This overwrites any ghost artifacts from previous frames.
             // MMIYOO driver doesn't clear properly, so we must paint every pixel.
             {
-                SDL_Rect row_bg = {0, y, SCREEN_WIDTH, item_height};
+                SDL_Rect row_bg = {0, y, 640, item_height};
                 ui_draw_filled_rect(r, row_bg, COLOR_BACKGROUND);
             }
 
