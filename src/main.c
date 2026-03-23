@@ -379,16 +379,24 @@ static void render(app_state_t *app) {
     // FORCE clear by blitting a solid background texture.
     // The MMIYOO driver ignores SDL_RenderClear AND SDL_RenderFillRect
     // for clearing. But SDL_RenderCopy from a texture DOES overwrite pixels.
-    // We create a solid-color texture once and blit it every frame.
     static SDL_Texture *bg_texture = NULL;
     if (!bg_texture) {
-        SDL_Surface *bg_surf = SDL_CreateRGBSurface(0, SCREEN_WIDTH, SCREEN_HEIGHT, 32,
-            0x00FF0000, 0x0000FF00, 0x000000FF, 0xFF000000);
-        if (bg_surf) {
-            SDL_FillRect(bg_surf, NULL, SDL_MapRGBA(bg_surf->format, 16, 16, 48, 255));
-            bg_texture = SDL_CreateTextureFromSurface(app->renderer, bg_surf);
-            SDL_FreeSurface(bg_surf);
-            if (bg_texture) {
+        // Use SDL_PIXELFORMAT_RGBA8888 explicitly for MMIYOO compatibility
+        bg_texture = SDL_CreateTexture(app->renderer,
+            SDL_PIXELFORMAT_RGBA8888,
+            SDL_TEXTUREACCESS_STATIC,
+            SCREEN_WIDTH, SCREEN_HEIGHT);
+        if (bg_texture) {
+            // Fill with background color (16, 16, 48)
+            // RGBA8888 format: each pixel is 0xRRGGBBAA
+            Uint32 *pixels = malloc(SCREEN_WIDTH * SCREEN_HEIGHT * 4);
+            if (pixels) {
+                Uint32 bg_color = (16 << 24) | (16 << 16) | (48 << 8) | 255;
+                for (int i = 0; i < SCREEN_WIDTH * SCREEN_HEIGHT; i++) {
+                    pixels[i] = bg_color;
+                }
+                SDL_UpdateTexture(bg_texture, NULL, pixels, SCREEN_WIDTH * 4);
+                free(pixels);
                 SDL_SetTextureBlendMode(bg_texture, SDL_BLENDMODE_NONE);
                 printf("Background clear texture created\n");
             }
