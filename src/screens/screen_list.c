@@ -183,19 +183,9 @@ int list_screen_handle_input(list_screen_t *screen, SDL_Event *event) {
         return 0;
     }
 
-    // Toggle favorite with X
-    if (input_button_pressed(BTN_X)) {
-        ha_entity_t *entity = list_screen_get_selected_entity(screen);
-        if (entity && screen->cache_mgr) {
-            int result = cache_manager_toggle_favorite(screen->cache_mgr, entity->entity_id);
-            if (result == 1) {
-                strcpy(screen->status_message, "Added to favorites");
-            } else if (result == 0) {
-                strcpy(screen->status_message, "Removed from favorites");
-            }
-        }
-        return 0;
-    }
+    // NOTE: X button (BTN_X / LSHIFT) is NOT used - it triggers the
+    // MMIYOO driver's virtual keyboard overlay which we cannot disable.
+    // Favorites toggle moved to SELECT + A in detail screen instead.
 
     // Back to setup
     if (input_button_pressed(BTN_B)) {
@@ -329,7 +319,7 @@ void list_screen_render(list_screen_t *screen) {
     }
 
     // Button hints
-    const char *hints[] = {"A:Act", "Y:View", "Sel:Info", "St:Sync"};
+    const char *hints[] = {"A:Act", "Y:View", "B:Back", "St:Sync"};
     ui_draw_button_hints(r, font_small, hints, 4);
 }
 

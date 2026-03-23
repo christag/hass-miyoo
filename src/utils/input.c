@@ -8,6 +8,9 @@
 // SDL2 key code mappings for Miyoo Mini Plus (OnionOS)
 #define MIYOO_BUTTON_A      SDLK_SPACE
 #define MIYOO_BUTTON_B      SDLK_LCTRL
+// NOTE: SDLK_LSHIFT triggers MMIYOO driver's virtual keyboard overlay.
+// We still detect it so we can CONSUME the event and prevent issues,
+// but the actual X button functionality is handled through this mapping.
 #define MIYOO_BUTTON_X      SDLK_LSHIFT
 #define MIYOO_BUTTON_Y      SDLK_LALT
 #define MIYOO_BUTTON_START  SDLK_RETURN
